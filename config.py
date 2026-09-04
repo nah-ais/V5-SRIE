@@ -254,15 +254,23 @@ PROJECT_METADATA_FIELDS = [
     "Activity",
     "Activity Detail",
 ]
-# NOTE: "Activity Code" SENGAJA TIDAK ada di daftar ini — satu kegiatan bisa
-# masuk ke BEBERAPA Activity Code sekaligus (panitia pilih 1/2/3/custom lewat
-# dropdown), dikelola terpisah lewat SS_ACTIVITY_CODES (list of str), bukan
-# field tunggal seperti field metadata lain. Lihat _render_activity_code_section()
-# di app.py. Data BTT akan DIGANDAKAN 1 baris per peserta PER Activity Code.
+# NOTE: "Activity Code" SENGAJA TIDAK ada di daftar ini — Activity Code
+# sekarang di-assign PER ACARA (kombinasi Tanggal + Judul Kegiatan), bukan
+# satu set global untuk semua data. Dikelola lewat SS_EVENT_ACTIVITY_CODES
+# (dict: (tanggal, judul) -> list[str] kode). Lihat _render_activity_code_section()
+# di app.py. Data BTT akan DIGANDAKAN 1 baris per peserta PER kode yang
+# ditempelkan ke acara peserta itu.
 
 SS_PROJECT_METADATA = "project_metadata"  # dict: field -> value yang diisi panitia
 SS_METADATA_APPLIED = "project_metadata_applied"  # bool: sudah diterapkan ke dataset atau belum
-SS_ACTIVITY_CODES = "activity_codes"  # list[str]: daftar Activity Code yang dipilih panitia
+
+# dict: (tanggal_kegiatan, judul_kegiatan) -> list[str] Activity Code untuk
+# acara itu. Diisi SATU ACARA PADA SATU WAKTU oleh panitia (lihat
+# _render_activity_code_section di app.py) — karena 1 form Kobo mencakup 1
+# Area Program (bukan 1 acara), data bisa punya banyak kombinasi
+# tanggal+judul kegiatan berbeda, masing-masing bisa punya Activity Code
+# sendiri-sendiri (boleh beda per tanggal, bahkan untuk judul yang sama).
+SS_EVENT_ACTIVITY_CODES = "event_activity_codes"
 
 # Area Program yang dipilih panitia di langkah Muat Data — dipakai sebagai
 # SUMBER kolom "AP" (dan turunannya: Province/District) di sheet BTT.
