@@ -90,7 +90,7 @@ def init_session_state() -> None:
         config.SS_PROJECT_METADATA: {field: "" for field in config.PROJECT_METADATA_FIELDS},
         config.SS_METADATA_APPLIED: False,
         config.SS_AP_CONTEXT: "(Manual)",
-        config.SS_ACTIVITY_CODES: [""],  # default: 1 kotak Activity Code kosong
+        config.SS_EVENT_ACTIVITY_CODES: {},  # dict: (tanggal, judul) -> list[str] kode
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -593,29 +593,108 @@ def _render_pending_login_section(df_login: pd.DataFrame, df_register: pd.DataFr
             st.rerun()
 
 
-def _render_activity_code_section() -> None:
+def _get_distinct_events(df_login: pd.DataFrame) -> list[tuple[str, str]]:
     """
-    Bagian input Activity Code — TERPISAH dari metadata biasa karena 1 kegiatan
-    bisa masuk ke BEBERAPA Activity Code sekaligus. Panitia pilih jumlah kode
-    (dropdown 1/2/3/Lainnya), sistem generate kotak input sejumlah itu.
+    Daftar kombinasi (Tanggal Kegiatan, Judul Kegiatan) unik di df_login,
+    diurutkan berdasarkan tanggal. Dipakai sebagai sumber dropdown pemilih
+    acara & tabel status keterisian Activity Code.
+    """
+    if df_login.empty or "tanggal_kegiatan" not in df_login.columns or "judul_kegiatan" not in df_login.columns:
+        return []
+    pairs = (
+        df_login[["tanggal_kegiatan", "judul_kegiatan"]]
+        .dropna(how="all")
+        .astype(str)
+        .apply(lambda s: s.str.strip())
+        .drop_duplicates()
+    )
+    pairs = pairs[(pairs["tanggal_kegiatan"] != "") | (pairs["judul_kegiatan"] != "")]
+    records = list(pairs.itertuples(index=False, name=None))
+    return sorted(records, key=lambda r: (r[0], r[1]))
 
-    Setiap kode disimpan di session_state[SS_ACTIVITY_CODES] (list[str]).
-    Saat export, df BTT akan DIGANDAKAN 1 baris per peserta PER kode di sini
-    (lihat _build_btt_sheet) — bukan digabung jadi 1 kolom/1 baris saja.
+
+def _render_activity_code_section(df_login: pd.DataFrame) -> None:
     """
-    st.subheader("Activity Code")
+    Bagian input Activity Code — DI-ASSIGN PER ACARA (kombinasi Tanggal +
+    Judul Kegiatan), BUKAN satu set global untuk semua data. Alasan: 1 form
+    Kobo mencakup 1 Area Program (bukan 1 acara), jadi data bisa punya
+    banyak kombinasi tanggal+judul kegiatan berbeda, dan tiap acara bisa
+    butuh Activity Code yang berbeda pula (boleh beda per tanggal, bahkan
+    untuk judul kegiatan yang sama — mis. "Posyandu Balita" tiap bulan boleh
+    beda kode tiap bulannya).
+
+    Alur: panitia pilih 1 acara (dropdown Tanggal -> Judul, di-filter
+    bertingkat), isi Activity Code untuk acara itu, klik Simpan. Diulang
+    satu-per-satu untuk tiap acara yang ada di data.
+
+    Kode disimpan di session_state[SS_EVENT_ACTIVITY_CODES], dict:
+    (tanggal, judul) -> list[str]. Saat export, tiap peserta dicocokkan ke
+    acaranya sendiri lalu digandakan sesuai kode acara itu (lihat
+    _build_btt_sheet) — peserta di acara BERBEDA bisa dapat kode BERBEDA.
+    """
+    st.subheader("Activity Code per Acara")
     st.caption(
-        "Satu kegiatan bisa masuk ke beberapa Activity Code sekaligus. "
-        "Data peserta akan **digandakan otomatis** di sheet BTT — 1 baris per peserta, "
-        "PER Activity Code yang dipilih di sini."
+        "Activity Code di-assign PER ACARA (Tanggal + Judul Kegiatan), karena 1 form Kobo "
+        "mencakup banyak acara berbeda. Isi satu acara pada satu waktu — boleh beda kode "
+        "untuk tanggal berbeda, meskipun judul kegiatannya sama."
     )
 
-    current_codes = st.session_state[config.SS_ACTIVITY_CODES]
-    current_count = len(current_codes) if current_codes else 1
+    events = _get_distinct_events(df_login)
+    if not events:
+        st.info("📭 Belum ada data Login dengan Tanggal/Judul Kegiatan untuk di-assign kodenya.")
+        return
+
+    event_codes_map = st.session_state[config.SS_EVENT_ACTIVITY_CODES]
+
+    # --- Ringkasan status keterisian (supaya panitia tahu progres, walau input tetap satu-per-satu) ---
+    assigned_count = sum(
+        1 for ev in events if any(c.strip() for c in event_codes_map.get(ev, []))
+    )
+    st.progress(
+        assigned_count / len(events) if events else 0.0,
+        text=f"{assigned_count} dari {len(events)} acara sudah diisi Activity Code",
+    )
+    with st.expander(f"📋 Lihat status semua acara ({len(events)} acara)"):
+        status_rows = []
+        for tanggal, judul in events:
+            codes = [c for c in event_codes_map.get((tanggal, judul), []) if c.strip()]
+            status_rows.append({
+                "Tanggal Kegiatan": tanggal or "-",
+                "Judul Kegiatan": judul or "-",
+                "Activity Code": ", ".join(codes) if codes else "⚠️ Belum diisi",
+            })
+        st.dataframe(pd.DataFrame(status_rows), use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # --- Pemilih acara: Tanggal dulu, Judul mengikuti (cascading) ---
+    distinct_tanggal = sorted({ev[0] for ev in events if ev[0]})
+    if not distinct_tanggal:
+        st.warning("⚠️ Data Login tidak punya Tanggal Kegiatan yang terisi.")
+        return
+
+    selected_tanggal = st.selectbox("1️⃣ Pilih Tanggal Kegiatan", distinct_tanggal, key="event_picker_tanggal")
+
+    judul_for_tanggal = sorted({judul for (tgl, judul) in events if tgl == selected_tanggal and judul})
+    if not judul_for_tanggal:
+        st.warning(f"⚠️ Tidak ada Judul Kegiatan untuk tanggal {selected_tanggal}.")
+        return
+
+    selected_judul = st.selectbox("2️⃣ Pilih Judul Kegiatan", judul_for_tanggal, key=f"event_picker_judul_{selected_tanggal}")
+
+    event_key = (selected_tanggal, selected_judul)
+    existing_codes = event_codes_map.get(event_key, [""])
+    current_count = len(existing_codes) if existing_codes else 1
+
+    st.markdown(f"**Acara terpilih:** {selected_judul} — {selected_tanggal}")
 
     count_options = ["1", "2", "3", "Lainnya"]
     default_index = count_options.index(str(current_count)) if str(current_count) in count_options else 3
-    selected_option = st.selectbox("Berapa Activity Code?", count_options, index=default_index)
+    # key disertakan event_key supaya widget reset ke default baru saat ganti acara
+    selected_option = st.selectbox(
+        "3️⃣ Berapa Activity Code untuk acara ini?", count_options, index=default_index,
+        key=f"code_count_{selected_tanggal}_{selected_judul}",
+    )
 
     if selected_option == "Lainnya":
         n_codes = st.number_input(
@@ -623,6 +702,7 @@ def _render_activity_code_section() -> None:
             min_value=1, max_value=20,
             value=current_count if current_count > 3 else 4,
             step=1,
+            key=f"code_count_custom_{selected_tanggal}_{selected_judul}",
         )
     else:
         n_codes = int(selected_option)
@@ -630,27 +710,25 @@ def _render_activity_code_section() -> None:
     new_codes = []
     cols = st.columns(3)
     for i in range(n_codes):
-        default_val = current_codes[i] if i < len(current_codes) else ""
+        default_val = existing_codes[i] if i < len(existing_codes) else ""
         with cols[i % 3]:
             val = st.text_input(
                 f"Activity Code #{i + 1}",
                 value=default_val,
-                key=f"activity_code_input_{i}",
+                key=f"activity_code_input_{selected_tanggal}_{selected_judul}_{i}",
                 help="Format wajib: xxx.xx.xx (contoh: 001.02.03)",
             )
         new_codes.append(val.strip())
-    st.session_state[config.SS_ACTIVITY_CODES] = new_codes
 
     invalid_codes = [c for c in new_codes if c and not re.match(ACTIVITY_CODE_PATTERN, c)]
     if invalid_codes:
-        st.warning(
-            f"⚠️ Format salah (harus xxx.xx.xx): {', '.join(invalid_codes)}. "
-            "Output Code untuk kode ini akan dikosongkan sampai formatnya diperbaiki."
-        )
+        st.warning(f"⚠️ Format salah (harus xxx.xx.xx): {', '.join(invalid_codes)}.")
 
-    filled_codes = [c for c in new_codes if c]
-    if filled_codes:
-        st.caption(f"📋 Preview: setiap peserta akan muncul **{len(filled_codes)}x** di BTT (1x per kode terisi).")
+    if st.button("💾 Simpan Kode untuk Acara Ini", type="primary"):
+        event_codes_map[event_key] = new_codes
+        st.session_state[config.SS_EVENT_ACTIVITY_CODES] = event_codes_map
+        st.success(f"✅ Activity Code untuk '{selected_judul}' ({selected_tanggal}) disimpan.")
+        st.rerun()
 
 
 def _render_project_metadata_section() -> None:
@@ -686,7 +764,7 @@ def render_finalize_step(threshold: float) -> None:
     _render_pending_login_section(df_login, df_register, threshold)
 
     st.divider()
-    _render_activity_code_section()
+    _render_activity_code_section(df_login)
 
     st.divider()
     _render_project_metadata_section()
@@ -714,10 +792,13 @@ def _build_btt_sheet(df_login: pd.DataFrame, df_register: pd.DataFrame, metadata
     (AP/Province/District dari dropdown panitia; Zonal/Sub-District dari Village)
     + metadata project (di-duplicate ke seluruh baris) + Output Code.
 
-    PENTING: kalau ada LEBIH DARI 1 Activity Code (lihat SS_ACTIVITY_CODES),
-    setiap peserta DIGANDAKAN — 1 baris per Activity Code — karena 1 kegiatan
-    bisa masuk ke beberapa Activity Code sekaligus. Kolom lain (Nama, Age, dst)
-    identik antar baris duplikat, cuma 'Activity Code' & 'Output Code' yang beda.
+    PENTING: Activity Code di-assign PER ACARA (kombinasi Tanggal + Judul
+    Kegiatan, lihat SS_EVENT_ACTIVITY_CODES) — BUKAN satu set global untuk
+    semua data. Setiap peserta dicocokkan ke acaranya sendiri, lalu
+    DIGANDAKAN sesuai jumlah kode yang ditempelkan ke acara itu. Peserta di
+    acara berbeda bisa dapat kode yang berbeda pula. Acara yang belum
+    diisi kodenya tetap dapat 1 baris dengan Activity Code/Output Code kosong
+    (supaya baris peserta tidak hilang cuma karena kode belum sempat diisi).
     """
     df_base = add_fiscal_columns(df_login, date_column="tanggal_kegiatan")
     df_base = add_month_first_column(df_base, df_register, date_column="tanggal_kegiatan")
@@ -730,21 +811,28 @@ def _build_btt_sheet(df_login: pd.DataFrame, df_register: pd.DataFrame, metadata
     for field, value in metadata.items():
         df_base[field] = value
 
-    # Ambil daftar Activity Code yang terisi (buang yang kosong). Kalau tidak
-    # ada satu pun terisi, tetap 1 baris per peserta dengan kode & Output Code
-    # kosong (supaya BTT tidak hilang total cuma karena kode belum diisi).
-    activity_codes = [c.strip() for c in st.session_state.get(config.SS_ACTIVITY_CODES, []) if c and c.strip()]
-    if not activity_codes:
-        activity_codes = [""]
+    event_codes_map = st.session_state.get(config.SS_EVENT_ACTIVITY_CODES, {})
 
-    duplicated_parts = []
-    for code in activity_codes:
-        df_copy = df_base.copy()
-        df_copy["Activity Code"] = code
-        df_copy["Output Code"] = _extract_output_code(code)
-        duplicated_parts.append(df_copy)
+    if df_base.empty:
+        df_btt = df_base.copy()
+        df_btt["Activity Code"] = pd.Series(dtype=object)
+        df_btt["Output Code"] = pd.Series(dtype=object)
+    else:
+        tanggal_norm = df_base.get("tanggal_kegiatan", pd.Series(index=df_base.index, dtype=object)).astype(str).str.strip()
+        judul_norm = df_base.get("judul_kegiatan", pd.Series(index=df_base.index, dtype=object)).astype(str).str.strip()
 
-    df_btt = pd.concat(duplicated_parts, ignore_index=True) if len(duplicated_parts) > 1 else duplicated_parts[0]
+        duplicated_parts = []
+        for (tanggal, judul), group in df_base.groupby([tanggal_norm, judul_norm], dropna=False):
+            codes = [c.strip() for c in event_codes_map.get((tanggal, judul), []) if c and c.strip()]
+            if not codes:
+                codes = [""]  # acara belum diisi kode -> tetap 1 baris, kode kosong
+            for code in codes:
+                df_copy = group.copy()
+                df_copy["Activity Code"] = code
+                df_copy["Output Code"] = _extract_output_code(code)
+                duplicated_parts.append(df_copy)
+
+        df_btt = pd.concat(duplicated_parts, ignore_index=True) if duplicated_parts else df_base.copy()
 
     BTT_COLUMNS = [
         "Implementor", "Sector", "CPM", "Project", "Project Category",
@@ -806,10 +894,30 @@ def render_export_step() -> None:
     ])
 
     df_btt = _build_btt_sheet(df_login, df_register, metadata)
-    codes_with_bad_format = [
-        c for c in st.session_state.get(config.SS_ACTIVITY_CODES, [])
-        if c and c.strip() and not re.match(ACTIVITY_CODE_PATTERN, c.strip())
+
+    # Peringatan: ada acara (Tanggal+Judul Kegiatan) yang belum diisi Activity
+    # Code sama sekali — sesuai keputusan bisnis, TETAP BOLEH lanjut export
+    # (bukan diblokir), baris peserta di acara itu cuma Activity Code/Output
+    # Code-nya kosong.
+    events = _get_distinct_events(df_login)
+    event_codes_map = st.session_state.get(config.SS_EVENT_ACTIVITY_CODES, {})
+    unassigned_events = [
+        f"{judul} ({tanggal})" for tanggal, judul in events
+        if not any(c.strip() for c in event_codes_map.get((tanggal, judul), []))
     ]
+    if unassigned_events:
+        preview = ", ".join(unassigned_events[:5])
+        more = f" (+{len(unassigned_events) - 5} lainnya)" if len(unassigned_events) > 5 else ""
+        st.warning(
+            f"⚠️ {len(unassigned_events)} acara belum diisi Activity Code: {preview}{more}. "
+            "Export tetap bisa dilanjutkan — baris peserta acara itu Activity Code/Output Code-nya kosong. "
+            "Lihat langkah ⑤ Finalisasi untuk mengisinya."
+        )
+
+    codes_with_bad_format = sorted({
+        c.strip() for codes in event_codes_map.values() for c in codes
+        if c and c.strip() and not re.match(ACTIVITY_CODE_PATTERN, c.strip())
+    })
     if codes_with_bad_format:
         st.warning(
             f"⚠️ Activity Code berikut formatnya belum sesuai xxx.xx.xx: {', '.join(codes_with_bad_format)}. "
