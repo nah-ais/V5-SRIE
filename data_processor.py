@@ -278,6 +278,10 @@ BTT_REGISTER_FIELD_ALIASES = {
     "Age": [
         "usia", "Age", "age", "umur",
     ],
+    # CATATAN: alias ini SUDAH TIDAK DIPAKAI untuk mengisi kolom "Disability
+    # Status" secara langsung lagi (sejak Status diturunkan dari "Disability
+    # Category" — lihat add_participant_profile_columns). Dipertahankan di
+    # sini sekadar riwayat/referensi, tidak berdampak ke hasil BTT.
     "Disability Status": [
         "disability_status", "Disability Status", "status_disabilitas",
         "status disabilitas", "disability status",
@@ -1066,7 +1070,6 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
     # Field source from Register
     register_output_fields = [
         "Household Name", "Sex", "Age",
-        "Disability Status",
         "RC", "RC Status", "IDN",
         "Institution", "Position", "No.Handphone (WA)",
         "# Child <5", "# Child 6-11", "# Child 12-17",
@@ -1075,6 +1078,13 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
     # NOTE: "Disability Category" SENGAJA TIDAK ada di daftar di atas — nilainya
     # dihitung terpisah di bawah (_compute_disability_category), dari 6
     # pertanyaan skrining mentah + Age, bukan 1 kolom langsung.
+    # NOTE: "Disability Status" JUGA SENGAJA TIDAK ada di daftar di atas —
+    # sebelumnya diambil langsung dari field mentah
+    # 'Apakah_Anda_memiliki_kebutuhan', SEKARANG diturunkan dari 'Disability
+    # Category' (lihat di bawah): Yes jika Category terisi (bukan "None"),
+    # No jika Category = "None". Ini juga menjaga konsistensi Status & Category
+    # (mis. field mentah dijawab "Ya" tapi Age tidak valid -> Category jadi
+    # "None" -> Status sekarang otomatis ikut "No", bukan "Yes" yang nyeleneh).
     # NOTE: 3 kolom "SP - ..." dan 4 kolom "MVC- Dimensi ..." SENGAJA TIDAK ada
     # di daftar di atas — nilainya dihitung terpisah di bawah dari jawaban
     # gabungan "_SP_Raw" / "_MVC_Raw" via _sp_flag()/_mvc_flag(), karena field
@@ -1090,6 +1100,13 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
         _compute_disability_category(age_val, profile)
         for age_val, profile in zip(df["Age"], profiles)
     ]
+
+    # "Disability Status" DITURUNKAN dari "Disability Category" (BUKAN lagi
+    # dari field mentah 'Apakah_Anda_memiliki_kebutuhan'): Yes kalau Category
+    # terisi (ada kategori yang cocok), No kalau Category = "None".
+    df["Disability Status"] = df["Disability Category"].apply(
+        lambda category: "No" if category == "None" else "Yes"
+    )
 
     # Deteksi 3 kategori bantuan proteksi sosial dari jawaban gabungan
     # "_SP_Raw" via substring match (SP_MARKERS) — bukan comma-split, karena
@@ -1125,8 +1142,9 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
     # Standarisasi Sex: Laki-laki -> Male, Perempuan -> Female.
     df["Sex"] = df["Sex"].apply(_sex_label)
 
-    # Standarisasi Disability Status: Ya -> Yes, Tidak -> No.
-    df["Disability Status"] = df["Disability Status"].apply(_ya_tidak_label)
+    # NOTE: "Disability Status" TIDAK LAGI di-standarisasi di sini — nilainya
+    # sudah langsung "Yes"/"No" hasil turunan dari "Disability Category" (lihat
+    # di atas, sebelum blok MVC/SP), bukan lagi dari field mentah Ya/Tidak.
 
     # Standarisasi RC: Ya -> Yes, Tidak -> No (field 'Apakah wakil anak Ya/Tidak').
     df["RC"] = df["RC"].apply(_ya_tidak_label)
