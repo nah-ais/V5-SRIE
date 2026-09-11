@@ -254,23 +254,22 @@ PROJECT_METADATA_FIELDS = [
     "Activity",
     "Activity Detail",
 ]
-# NOTE: "Activity Code" SENGAJA TIDAK ada di daftar ini — Activity Code
-# sekarang di-assign PER ACARA (kombinasi Tanggal + Judul Kegiatan), bukan
-# satu set global untuk semua data. Dikelola lewat SS_EVENT_ACTIVITY_CODES
-# (dict: (tanggal, judul) -> list[str] kode). Lihat _render_activity_code_section()
-# di app.py. Data BTT akan DIGANDAKAN 1 baris per peserta PER kode yang
-# ditempelkan ke acara peserta itu.
+# NOTE: "Activity Code" dan SELURUH field metadata di atas SEKARANG DI-ASSIGN
+# PER ACARA (kombinasi Tanggal + Judul Kegiatan), BUKAN satu set global untuk
+# semua data — supaya panitia TIDAK copy-paste 1 info project ke semua
+# kegiatan yang beda. Dikelola lewat SS_EVENT_PROJECT_DATA (dict:
+# (tanggal, judul) -> {"codes": list[str], "metadata": dict[field, value]}).
+# Lihat _render_event_project_section() di app.py. Data BTT akan DIGANDAKAN
+# 1 baris per peserta PER kode yang ditempelkan ke acara peserta itu, dengan
+# metadata project MILIK ACARA ITU SENDIRI (bukan metadata global).
 
-SS_PROJECT_METADATA = "project_metadata"  # dict: field -> value yang diisi panitia
-SS_METADATA_APPLIED = "project_metadata_applied"  # bool: sudah diterapkan ke dataset atau belum
-
-# dict: (tanggal_kegiatan, judul_kegiatan) -> list[str] Activity Code untuk
-# acara itu. Diisi SATU ACARA PADA SATU WAKTU oleh panitia (lihat
-# _render_activity_code_section di app.py) — karena 1 form Kobo mencakup 1
-# Area Program (bukan 1 acara), data bisa punya banyak kombinasi
-# tanggal+judul kegiatan berbeda, masing-masing bisa punya Activity Code
-# sendiri-sendiri (boleh beda per tanggal, bahkan untuk judul yang sama).
-SS_EVENT_ACTIVITY_CODES = "event_activity_codes"
+# dict: (tanggal_kegiatan, judul_kegiatan) -> {"codes": list[str], "metadata": dict}
+# Diisi SATU ACARA PADA SATU WAKTU oleh panitia (lihat _render_event_project_section
+# di app.py) — karena 1 form Kobo mencakup 1 Area Program (bukan 1 acara),
+# data bisa punya banyak kombinasi tanggal+judul kegiatan berbeda, masing-masing
+# butuh Activity Code MAUPUN info project (Implementor/Sector/dst) sendiri-sendiri
+# (boleh beda per tanggal, bahkan untuk judul kegiatan yang sama).
+SS_EVENT_PROJECT_DATA = "event_project_data"
 
 # Area Program yang dipilih panitia di langkah Muat Data — dipakai sebagai
 # SUMBER kolom "AP" (dan turunannya: Province/District) di sheet BTT.
