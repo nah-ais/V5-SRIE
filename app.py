@@ -345,7 +345,7 @@ def render_check_step(threshold: float) -> None:
 
     st.markdown("### Apa yang akan diperiksa?")
     col1, col2, col3 = st.columns(3)
-    col1.info("**Login**\n\nFuzzy pairwise global; kegiatan/tanggal dipakai sebagai konteks review.")
+    col1.info("**Login**\n\nFuzzy pairwise PER KEGIATAN — pasangan cuma dibandingkan kalau judul & tanggal kegiatannya sama persis.")
     col2.info("**Register**\n\nFuzzy pairwise global; kegiatan/tanggal dipakai sebagai konteks review.")
     col3.info("**Kelengkapan Login**\n\nMencari peserta Register yang belum tercatat Login pada kegiatan terkait.")
 
