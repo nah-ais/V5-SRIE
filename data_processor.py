@@ -209,9 +209,10 @@ def add_month_first_column(
 ) -> pd.DataFrame:
     """Add Month (First) using the earliest valid Register event date per participant.
 
-    Primary lookup: custom_id. Fallback: normalized full name. This is intentionally
-    independent of the Login event date because the value represents the participant's
-    first registration/joining month.
+    EXACT MATCH BY custom_id SAJA — TIDAK ADA fallback ke pencocokan nama.
+    Ini keputusan bisnis yang disengaja: kalau custom_id kosong/tidak ketemu
+    pasangannya, 'Month (First)' dikosongkan saja, TIDAK ditebak dari
+    kemiripan nama. Jangan tambahkan fallback nama lagi di sini.
     """
     df = df_login.copy()
     df["Month (First)"] = ""
@@ -227,32 +228,21 @@ def add_month_first_column(
     def clean_series(series):
         return series.fillna("").astype(str).str.strip()
 
-    # Lookup tables by custom_id and, independently, by full name.
+    # Lookup table by custom_id SAJA — exact match.
     id_map = {}
     if "custom_id" in reg.columns:
         for key, g in reg[clean_series(reg["custom_id"]) != ""].groupby(clean_series(reg["custom_id"]), sort=False):
             id_map[key] = g["_parsed_date"].min()
 
-    name_map = {}
-    if "nama" in reg.columns:
-        names = clean_series(reg["nama"]).map(_norm_identity)
-        for key, g in reg[names != ""].groupby(names, sort=False):
-            name_map[key] = g["_parsed_date"].min()
-
     login_ids = clean_series(df.get("custom_id", pd.Series(index=df.index, dtype=object)))
-    login_names = df.get("nama", pd.Series(index=df.index, dtype=object)).map(_norm_identity)
 
-    def lookup(row):
-        cid = str(row.get("_cid", "")).strip()
-        name = str(row.get("_name", "")).strip()
+    def lookup(cid):
+        cid = str(cid).strip()
         if cid and cid in id_map:
             return _fiscal_month_label(id_map[cid])
-        if name and name in name_map:
-            return _fiscal_month_label(name_map[name])
         return ""
 
-    temp = pd.DataFrame({"_cid": login_ids, "_name": login_names}, index=df.index)
-    df["Month (First)"] = temp.apply(lookup, axis=1)
+    df["Month (First)"] = login_ids.apply(lookup)
     return df
 
 
