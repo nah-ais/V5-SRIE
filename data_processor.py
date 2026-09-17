@@ -402,13 +402,16 @@ BTT_REGISTER_FIELD_ALIASES = {
         "group_digital_absensi/group_eb6jo83/group_gj4hg92/Bantuan_Proteksi_Sos_erima_dal",
     ],
     "Institution": [
-        "institution", "Institution", "instansi",
-        # Path lengkap terkonfirmasi dari scan explore_kobo_schema.py.
+        # HANYA path lengkap terkonfirmasi — alias generik seperti "instansi"
+        # SENGAJA DIHAPUS karena terbukti salah tangkap field gerbang
+        # "Apakah_Anda_Wakil_Instansi" (ya/tidak) via pencocokan substring,
+        # padahal field itu BUKAN nama instansi. Field ini SAH kosong kalau
+        # peserta bukan wakil instansi (field Asal_Instansi memang tidak
+        # muncul di submission-nya) — bukan berarti perlu ditebak dari field lain.
         "group_digital_absensi/group_eb6jo83/group_pw2gv45/Asal_Instansi",
     ],
     "Position": [
-        "position", "Position", "jabatan",
-        # Path lengkap terkonfirmasi dari scan explore_kobo_schema.py.
+        # Sama seperti Institution — HANYA path lengkap terkonfirmasi.
         "group_digital_absensi/group_eb6jo83/group_pw2gv45/Posisi_Jabatan",
     ],
     "No.Handphone (WA)": [
@@ -436,68 +439,22 @@ BTT_REGISTER_FIELD_ALIASES = {
     # Kelurahan dropdown-nya kosong/menunjuk opsi "lainnya"). Dikombinasikan
     # di add_participant_profile_columns() (bukan di sini) karena butuh
     # logika prioritas antar 2 kolom, bukan cuma 1 alias resolusi biasa.
-    "Village": ["kelurahan", "Kelurahan"],
+    "Village": ["kelurahan", "Kelurahan", "desa", "Desa"],
     "_Village_Other": [
         "kelurahan_lainnya", "Tuliskan_Kelurahannya", "kelurahan lainnya",
-        "tuliskan kelurahannya",
+        "tuliskan kelurahannya", "desa_lainnya", "Tuliskan_Desanya", "tuliskan desanya",
     ],
     "Sub-Village 1": ["rw", "RW"],
     "Sub-Village 2": ["rt", "RT"],
+    # --- Kolom lokasi tambahan: DIBACA LANGSUNG dari field Register kalau
+    # ADA (mis. hasil pulldata Kecamatan/Kabupaten/Provinsi di form AP
+    # tertentu). TIDAK ADA tabel referensi/lookup apa pun di sini — kalau
+    # field ini tidak ada di form suatu AP, hasilnya kosong (bukan ditebak).
+    "Sub-District": ["kecamatan", "Kecamatan", "dusun", "Dusun"],
+    "District": ["kabupaten", "kota", "Kabupaten", "Kota", "kabupaten_kota", "Kabupaten_Kota"],
+    "Province": ["provinsi", "Provinsi"],
+    "Zonal": ["zonal", "Zonal"],
 }
-
-# =========================================================
-# LOOKUP LOKASI: Village -> Sub-District -> Zonal, dan AP -> Province/District
-# =========================================================
-# Kunci dinormalisasi (huruf kecil, underscore/strip jadi spasi, spasi
-# dirapikan) sebelum dicocokkan — supaya tahan terhadap slug mentah Kobo
-# (mis. "tanah_kali_kedinding") MAUPUN label berspasi biasa
-# (mis. "Tanah Kali Kedinding").
-VILLAGE_TO_SUBDISTRICT = {
-    "simolawang": "Simokerto",
-    "sidodadi": "Simokerto",
-    "tambakrejo": "Simokerto",
-    "tanah kali kedinding": "Kenjeran",
-    "bulak banteng": "Kenjeran",
-}
-
-SUBDISTRICT_TO_ZONAL = {
-    "simokerto": "Surabaya Pusat",
-    "kenjeran": "Surabaya Utara",
-}
-
-# HANYA berisi AP yang aturannya sudah pasti (AP-Simokerto). AP lain yang
-# belum diatur SENGAJA dikosongkan (bukan ditebak) — lihat keputusan bisnis
-# terkait, supaya data tidak salah diasumsikan. Tambah baris baru di sini
-# kalau nanti ada AP lain (mis. AP-Kenjeran) yang aturannya sudah dipastikan.
-AP_TO_PROVINCE_DISTRICT = {
-    "AP-Simokerto": ("Jawa Timur", "Kota Surabaya"),
-}
-
-# Override Zonal PER-AP: kalau AP terpilih ada di sini, SEMUA baris untuk AP
-# itu dipaksa pakai nilai Zonal ini (menimpa hasil turunan Sub-District di
-# atas). AP yang TIDAK terdaftar di sini tetap pakai Zonal hasil lookup
-# SUBDISTRICT_TO_ZONAL seperti biasa (fallback, tidak berubah).
-AP_TO_ZONAL_OVERRIDE = {
-    "AP-Simokerto": "Sambawa",
-}
-
-
-def _normalize_place_name(value) -> str:
-    """Normalisasi nama tempat untuk pencocokan lookup: lower, underscore/strip
-    jadi spasi, spasi ganda dirapikan jadi satu. Supaya 'tanah_kali_kedinding'
-    (slug mentah Kobo) dan 'Tanah Kali Kedinding' (label rapi) sama-sama cocok."""
-    if pd.isna(value):
-        return ""
-    text = str(value).strip().lower().replace("_", " ").replace("-", " ")
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def _lookup_place(mapping: dict, value) -> str:
-    """Cari `value` (dinormalisasi) di `mapping` (key HARUS sudah huruf kecil
-    apa adanya, tanpa underscore). Kembalikan '' kalau tidak ketemu (bukan
-    menebak)."""
-    key = _normalize_place_name(value)
-    return mapping.get(key, "")
 
 
 # =========================================================
@@ -1074,6 +1031,7 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
         "Institution", "Position", "No.Handphone (WA)",
         "# Child <5", "# Child 6-11", "# Child 12-17",
         "Village", "Sub-Village 1", "Sub-Village 2",
+        "Sub-District", "District", "Province", "Zonal",
     ]
     # NOTE: "Disability Category" SENGAJA TIDAK ada di daftar di atas — nilainya
     # dihitung terpisah di bawah (_compute_disability_category), dari 6
@@ -1136,8 +1094,11 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
     # VILLAGE_TO_SUBDISTRICT / SUBDISTRICT_TO_ZONAL) — bukan field mentah
     # tersendiri dari Kobo. Village yang tidak dikenali -> dikosongkan
     # (bukan ditebak).
-    df["Sub-District"] = df["Village"].apply(lambda v: _lookup_place(VILLAGE_TO_SUBDISTRICT, v))
-    df["Zonal"] = df["Sub-District"].apply(lambda v: _lookup_place(SUBDISTRICT_TO_ZONAL, v))
+    # NOTE: "Sub-District" & "Zonal" sekarang sudah terisi lewat mekanisme
+    # alias biasa di atas (register_output_fields) — dibaca LANGSUNG dari
+    # field Register kalau ada (mis. hasil pulldata Kecamatan di form AP
+    # tertentu), TANPA tabel referensi/lookup apa pun. Kalau field itu tidak
+    # ada di form suatu AP, kolomnya otomatis kosong (bukan ditebak).
 
     # Standarisasi Sex: Laki-laki -> Male, Perempuan -> Female.
     df["Sex"] = df["Sex"].apply(_sex_label)
@@ -1190,26 +1151,20 @@ def add_btt_register_columns(df_login: pd.DataFrame, df_register: pd.DataFrame) 
 
 def add_location_context_columns(df: pd.DataFrame, ap_label: str) -> pd.DataFrame:
     """
-    Menambahkan kolom 'AP', 'Province', 'District' berdasarkan Area Program
-    yang DIPILIH PANITIA di dropdown langkah Muat Data — BUKAN dari field
-    form Kobo mana pun (baik Login maupun Register).
+    Menambahkan kolom 'AP' berdasarkan Area Program yang DIPILIH PANITIA di
+    dropdown langkah Muat Data — BUKAN dari field form Kobo mana pun.
 
-    'Province'/'District' hanya terisi untuk AP yang aturannya sudah pasti
-    (lihat AP_TO_PROVINCE_DISTRICT). AP lain (termasuk "(Manual)"/kosong)
-    akan menghasilkan ketiga kolom ini kosong — SENGAJA tidak ditebak.
-
-    Kolom 'Zonal' JUGA di-override di sini kalau AP terpilih ada di
-    AP_TO_ZONAL_OVERRIDE — nilai override ini MENIMPA hasil turunan
-    Sub-District (dari add_participant_profile_columns) untuk SEMUA baris
-    AP tersebut. AP yang tidak terdaftar di override tetap pakai Zonal hasil
-    lookup Sub-District seperti biasa (tidak diubah oleh fungsi ini).
+    'Province', 'District', 'Sub-District', 'Zonal' TIDAK diurus di sini —
+    kolom-kolom itu sudah diisi langsung di add_participant_profile_columns()
+    lewat pencarian nama field biasa (sama seperti Village/Institution/dst).
+    Kalau field itu ada di form suatu AP (mis. hasil pulldata Kecamatan),
+    otomatis kebaca; kalau tidak ada, kosong. TIDAK ADA tabel referensi
+    ataupun hardcode di mana pun untuk lokasi.
 
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame BTT yang sedang dibangun (baris = peserta/kehadiran Login).
-        HARUS sudah punya kolom 'Zonal' (dari add_participant_profile_columns)
-        sebelum fungsi ini dipanggil, supaya override bisa menimpanya.
+        DataFrame BTT yang sedang dibangun.
     ap_label : str
         Nama AP yang dipilih panitia di dropdown (mis. "AP-Simokerto"),
         atau "(Manual)"/"" kalau tidak ada AP spesifik yang dipilih.
@@ -1217,20 +1172,11 @@ def add_location_context_columns(df: pd.DataFrame, ap_label: str) -> pd.DataFram
     Returns
     -------
     pd.DataFrame
-        Salinan `df` + kolom 'AP', 'Province', 'District' (dan 'Zonal' yang
-        sudah di-override kalau berlaku).
+        Salinan `df` + kolom 'AP'.
     """
     df = df.copy()
     ap_clean = (ap_label or "").strip()
-
     df["AP"] = ap_clean if ap_clean and ap_clean != "(Manual)" else ""
-    province, district = AP_TO_PROVINCE_DISTRICT.get(ap_clean, ("", ""))
-    df["Province"] = province
-    df["District"] = district
-
-    if ap_clean in AP_TO_ZONAL_OVERRIDE:
-        df["Zonal"] = AP_TO_ZONAL_OVERRIDE[ap_clean]
-
     return df
 
 
