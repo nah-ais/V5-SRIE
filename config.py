@@ -50,33 +50,6 @@ REGISTER_COLUMN_MAP = {
     "group_digital_absensi/group_informasi_respondent/custom_id": "custom_id",
 }
 
-# =========================================================
-# 1b. FIELD REGISTER TAMBAHAN UNTUK BTT
-# =========================================================
-# Alias digunakan saat response Kobo menyimpan nama field yang panjang
-# (misalnya group_xxx/.../nama_field). Resolver di kobo_api.py akan
-# mencari exact normalized name lalu token yang terkandung pada nama field.
-BTT_REGISTER_COLUMN_ALIASES = {
-    "disability_category": ["disability_category", "Disability Category", "kategori_disabilitas", "kategori disability"],
-    "disability_status": ["disability_status", "Disability Status", "status_disabilitas", "status disability"],
-    "rc": ["rc", "RC", "relational_capital"],
-    "rc_status": ["rc_status", "RC Status", "status_rc", "idn rc status"],
-    "idn": ["idn", "IDN", "idn_status"],
-    "mvc_dimensi_1": ["mvc_dimensi_1", "MVC- Dimensi 1", "MVC Dimensi 1", "mvc1", "mvc_1"],
-    "mvc_dimensi_2": ["mvc_dimensi_2", "MVC- Dimensi 2", "MVC Dimensi 2", "mvc2", "mvc_2"],
-    "mvc_dimensi_3": ["mvc_dimensi_3", "MVC- Dimensi 3", "MVC Dimensi 3", "mvc3", "mvc_3"],
-    "mvc_dimensi_4": ["mvc_dimensi_4", "MVC- Dimensi 4", "MVC Dimensi 4", "mvc4", "mvc_4"],
-    "sp_cash_transfers": ["sp_cash_transfers", "SP - Cash transfers/food assistance", "cash_transfers", "food_assistance", "sp_cash"],
-    "sp_health_assistance": ["sp_health_assistance", "SP - Health assistance", "health_assistance", "sp_health"],
-    "sp_education_assistance": ["sp_education_assistance", "SP - Education Assistance", "education_assistance", "sp_education"],
-    "institution": ["institution", "Institution", "instansi"],
-    "position": ["position", "Position", "jabatan"],
-    "nomor_hp": ["nomor_hp", "No.Handphone (WA)", "nomor_handphone", "nomor wa", "whatsapp", "phone"],
-    "child_under_5": ["child_under_5", "# Child <5", "jumlah_child_under_5", "child 0 5", "child <5"],
-    "child_6_11": ["child_6_11", "# Child 6-11", "jumlah_child_6_11", "child 6 11"],
-    "child_12_17": ["child_12_17", "# Child 12-17", "jumlah_child_12_17", "child 12 17"],
-}
-
 # Kolom minimal yang WAJIB ada supaya proses matching LOGIN bisa berjalan
 REQUIRED_MATCH_COLUMNS = ["nama", "tanggal_lahir", "kelurahan", "area_program"]
 
