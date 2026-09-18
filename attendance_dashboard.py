@@ -28,6 +28,7 @@ konsisten (bukan reimplementasi field-mapping dari nol).
 from __future__ import annotations
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 import config
@@ -141,6 +142,77 @@ def build_attendance(
     }
 
 
+def _age_group_label(usia_num) -> str:
+    """Kelompok usia, konsisten dengan kolom 'Age group' di BTT."""
+    if pd.isna(usia_num):
+        return "Tidak diketahui"
+    usia_num = int(usia_num)
+    if usia_num <= 5:
+        return "0-5"
+    if usia_num <= 11:
+        return "06-11"
+    if usia_num <= 17:
+        return "12-17"
+    return "18+"
+
+
+def render_charts(filtered: pd.DataFrame, n_login: int, n_appended: int) -> None:
+    """3 visualisasi sederhana: Sumber (donut), Jenis Kelamin (bar), Kelompok Usia (bar)."""
+    st.subheader("📈 Visualisasi")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**Sumber Kehadiran**")
+        if n_login + n_appended > 0:
+            df_sumber = pd.DataFrame({
+                "Sumber": ["Login", "Register (auto-append)"],
+                "Jumlah": [n_login, n_appended],
+            })
+            fig = px.pie(
+                df_sumber, names="Sumber", values="Jumlah", hole=0.5,
+                color="Sumber",
+                color_discrete_map={"Login": "#1E3A8A", "Register (auto-append)": "#F59E0B"},
+            )
+            fig.update_traces(textinfo="value+percent")
+            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=True, height=280)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("Tidak ada data.")
+
+    with col2:
+        st.markdown("**Distribusi Jenis Kelamin**")
+        gender_counts = filtered["jenis_kelamin"].replace("", "Tidak diketahui").value_counts()
+        if not gender_counts.empty:
+            fig = px.bar(
+                x=gender_counts.index, y=gender_counts.values,
+                labels={"x": "Jenis Kelamin", "y": "Jumlah"},
+                color=gender_counts.index,
+                color_discrete_sequence=px.colors.qualitative.Set2,
+            )
+            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=False, height=280)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("Tidak ada data.")
+
+    with col3:
+        st.markdown("**Distribusi Kelompok Usia**")
+        age_groups = filtered["usia_num"].apply(_age_group_label)
+        order = ["0-5", "06-11", "12-17", "18+", "Tidak diketahui"]
+        age_counts = age_groups.value_counts().reindex(order).dropna()
+        if not age_counts.empty:
+            fig = px.bar(
+                x=age_counts.index, y=age_counts.values,
+                labels={"x": "Kelompok Usia", "y": "Jumlah"},
+                color=age_counts.index,
+                color_discrete_sequence=px.colors.qualitative.Pastel,
+            )
+            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=False, height=280)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("Tidak ada data.")
+
+
 # =========================================================
 # UI
 # =========================================================
@@ -242,6 +314,11 @@ def render_attendance_dashboard(ap_asset_map: dict) -> None:
     col2.metric("Tambahan dari Register", n_appended_filtered)
     col3.metric("Total Hadir", n_login_filtered + n_appended_filtered)
 
+    st.divider()
+    render_charts(filtered, n_login_filtered, n_appended_filtered)
+
+    st.divider()
+    st.subheader("📋 Detail Data")
     st.dataframe(
         filtered[["custom_id", "nama", "usia", "jenis_kelamin", "Sumber"]].rename(columns={
             "custom_id": "ID", "nama": "Nama", "usia": "Usia", "jenis_kelamin": "Jenis Kelamin",
