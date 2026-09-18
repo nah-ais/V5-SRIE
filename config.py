@@ -198,6 +198,10 @@ def _build_ap_asset_map() -> dict:
             "token": values.get("token") or KOBO_TOKEN,
             "login": values.get("login_uid", ""),
             "register": values.get("register_uid", ""),
+            # "base_url" ditambahkan (additive, tidak mengubah 3 key di atas
+            # yang sudah dipakai alur BTT) — dipakai fitur Sponsorship/Signature
+            # untuk AP yang pakai server Kobo berbeda (mis. kflight.wahanavisi.org).
+            "base_url": values.get("base_url") or KOBO_ENDPOINT,
         }
     return result
 
