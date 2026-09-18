@@ -1091,12 +1091,45 @@ def render_landing_page() -> None:
                 st.rerun()
 
 
+def render_btt_sublanding_page() -> None:
+    """Sub-landing DI DALAM kartu BTT — pilih Pembuatan Form BTT (wizard
+    resmi) atau Data Visualisasi (dashboard cek kehadiran real-time)."""
+    st.title("📋 BTT")
+    st.caption("Pilih sub-kebutuhan untuk melanjutkan.")
+    st.write("")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        with st.container(border=True):
+            st.markdown("### 🧹 Pembuatan Form BTT")
+            st.write(
+                "Alur lengkap: Muat Data → Pemeriksaan → Review → Finalisasi → "
+                "Export. Hasil resmi untuk pelaporan (melalui proses cleaning manual)."
+            )
+            st.write("")
+            if st.button("Masuk ke Pembuatan Form BTT →", use_container_width=True, type="primary", key="btt_sub_wizard"):
+                st.session_state["btt_submode"] = "Wizard"
+                st.rerun()
+    with col2:
+        with st.container(border=True):
+            st.markdown("### 📊 Data Visualisasi")
+            st.write(
+                "Cek kehadiran real-time/indikatif per kegiatan (Login + auto-append "
+                "dari Register) — BUKAN pengganti proses cleaning resmi BTT."
+            )
+            st.write("")
+            if st.button("Masuk ke Data Visualisasi →", use_container_width=True, type="primary", key="btt_sub_viz"):
+                st.session_state["btt_submode"] = "Visualisasi"
+                st.rerun()
+
+
 def run_app() -> None:
     """
     Titik masuk aplikasi — panitia pilih dulu 1 dari 2 kebutuhan lewat
     HALAMAN LANDING (bukan cuma radio di sidebar) sebelum masuk ke fitur
     yang sesuai. TIDAK mengubah main() (alur BTT) sama sekali — cuma
-    menambahkan halaman pilihan di depannya.
+    menambahkan halaman pilihan di depannya. Kartu "BTT" punya SUB-landing
+    lagi di dalamnya (Pembuatan Form BTT vs Data Visualisasi).
     """
     if not st.session_state.get("app_mode"):
         render_landing_page()
@@ -1104,12 +1137,28 @@ def run_app() -> None:
 
     if st.sidebar.button("← Ganti Kebutuhan", use_container_width=True):
         st.session_state["app_mode"] = None
+        st.session_state["btt_submode"] = None
         st.rerun()
     st.sidebar.divider()
 
     if st.session_state["app_mode"] == "Sponsorship (Signature)":
         import signature_report
         signature_report.render_signature_app(config.AP_ASSET_MAP)
+        return
+
+    # --- Mode BTT: ada sub-landing lagi di dalamnya ---
+    if not st.session_state.get("btt_submode"):
+        render_btt_sublanding_page()
+        return
+
+    if st.sidebar.button("← Kembali ke Pilihan BTT", use_container_width=True):
+        st.session_state["btt_submode"] = None
+        st.rerun()
+    st.sidebar.divider()
+
+    if st.session_state["btt_submode"] == "Visualisasi":
+        import attendance_dashboard
+        attendance_dashboard.render_attendance_dashboard(config.AP_ASSET_MAP)
     else:
         main()
 
