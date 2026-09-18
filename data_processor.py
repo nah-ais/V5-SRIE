@@ -1116,19 +1116,41 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
     df["Age group"] = df["Age"].apply(_age_group_label)
     df["Category"] = df["Age"].apply(_category_label)
 
-    # MVC = Yes jika total dimensi Yes (MVC- Dimensi 1..4) >= 2.
-    # ATURAN TAMBAHAN: peserta PEREMPUAN (Sex == Female) dapat +1 mark bonus,
-    # TAPI HANYA jika minimal 1 dimensi sudah Yes (bonus tidak berlaku kalau
-    # tidak ada satu pun dimensi yang tercentang). Jadi perempuan dengan
-    # 1 dimensi Yes -> 1 (asli) + 1 (bonus perempuan) = 2 -> MVC jadi Yes.
+    # =========================================================
+    # ATURAN KEBIJAKAN MVC (BUKAN dari jawaban form) — berlaku untuk ANAK saja
+    # (Category == "Child"):
+    #   - MVC- Dimensi 4 SELALU "Yes" untuk SEMUA anak (laki-laki maupun
+    #     perempuan), menimpa hasil deteksi dari jawaban form.
+    #   - MVC- Dimensi 2 SELALU "Yes" TAMBAHAN khusus untuk anak PEREMPUAN
+    #     (Sex == Female), menimpa hasil deteksi dari jawaban form.
+    #
+    # KENAPA: ini pengganti aturan "bonus +1 untuk perempuan" yang lama.
+    # Dengan Dimensi 4 dipaksa Yes untuk semua anak + Dimensi 2 dipaksa Yes
+    # tambahan untuk anak perempuan, maka SECARA OTOMATIS (tanpa bonus
+    # tambahan apa pun di MVC final):
+    #   - Anak PEREMPUAN sudah punya 2 dimensi Yes (Dimensi 2 & 4) pasti ->
+    #     MVC akhir SELALU "Yes", apa pun jawaban Dimensi 1/3.
+    #   - Anak LAKI-LAKI baru punya 1 dimensi Yes pasti (Dimensi 4) -> perlu
+    #     MINIMAL 1 dimensi lain (1/2/3) yang benar-benar Yes dari jawaban
+    #     form supaya total mencapai 2 dan MVC akhir jadi "Yes".
+    # Peserta DEWASA (Category != "Child") TIDAK terkena aturan paksa ini —
+    # dimensi mereka tetap murni dari jawaban form apa adanya.
+    is_child = df["Category"] == "Child"
+    is_female = df["Sex"].astype(str).str.strip().str.lower() == "female"
+
+    df.loc[is_child, "MVC- Dimensi 4"] = "Yes"
+    df.loc[is_child & is_female, "MVC- Dimensi 2"] = "Yes"
+
+    # MVC = Yes jika total dimensi Yes (MVC- Dimensi 1..4) >= 2. TIDAK ADA
+    # lagi bonus tambahan di sini — efek "perempuan lebih mudah MVC" sudah
+    # didapat murni dari pemaksaan Dimensi 2/4 di atas, bukan dari
+    # penambahan angka di perhitungan akhir ini.
     mvc_fields = [
         "MVC- Dimensi 1", "MVC- Dimensi 2", "MVC- Dimensi 3", "MVC- Dimensi 4"
     ]
 
     def _mvc_final(row) -> str:
         dimension_count = sum(_yes(row.get(field, "")) for field in mvc_fields)
-        if dimension_count >= 1 and str(row.get("Sex", "")).strip().lower() == "female":
-            dimension_count += 1
         return "Yes" if dimension_count >= 2 else "No"
 
     df["MVC"] = df.apply(_mvc_final, axis=1)
