@@ -348,6 +348,10 @@ BTT_REGISTER_FIELD_ALIASES = {
         "rc_status", "RC Status", "status_rc", "status rc", "rc status", "IDN RC Status",
     ],
     "IDN": [
+        # Path lengkap terkonfirmasi dari scan kolom live — prioritaskan versi
+        # "_Final" (hasil olahan) di atas versi mentah "IDN".
+        "group_digital_absensi/group_ys2ge24/group_cn7re50/IDN_Final",
+        "group_digital_absensi/group_ys2ge24/group_cn7re50/IDN",
         "idn", "IDN", "idn_status", "IDN Status", "idn status",
     ],
     # 4 kolom "MVC- Dimensi ..." SENGAJA TIDAK dicari sebagai kolom terpisah di
@@ -440,8 +444,16 @@ BTT_REGISTER_FIELD_ALIASES = {
     # ADA (mis. hasil pulldata Kecamatan/Kabupaten/Provinsi di form AP
     # tertentu). TIDAK ADA tabel referensi/lookup apa pun di sini — kalau
     # field ini tidak ada di form suatu AP, hasilnya kosong (bukan ditebak).
-    "Sub-District": ["kecamatan", "Kecamatan", "dusun", "Dusun"],
-    "District": ["kabupaten", "kota", "Kabupaten", "Kota", "kabupaten_kota", "Kabupaten_Kota"],
+    "Sub-District": [
+        # Prioritaskan path lengkap "_Final" (hasil olahan) kalau ada.
+        "group_digital_absensi/group_informasi_respondent/Kecamatan_Final",
+        "kecamatan", "Kecamatan", "dusun", "Dusun",
+    ],
+    "District": [
+        # Field gabungan Kota+Kabupaten (path lengkap terkonfirmasi).
+        "group_digital_absensi/group_informasi_respondent/Kota_Kabupaten",
+        "kabupaten", "kota", "Kabupaten", "Kota", "kabupaten_kota", "Kabupaten_Kota", "Kota_Kabupaten",
+    ],
     "Province": ["provinsi", "Provinsi"],
     "Zonal": ["zonal", "Zonal"],
 }
