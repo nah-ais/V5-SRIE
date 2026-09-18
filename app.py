@@ -1059,5 +1059,25 @@ def main() -> None:
     step_renderers[step]()
 
 
+def run_app() -> None:
+    """
+    Titik masuk aplikasi — panitia pilih dulu 1 dari 2 kebutuhan sebelum
+    masuk ke fitur yang sesuai. TIDAK mengubah main() (alur BTT) sama
+    sekali — cuma menambahkan pilihan di depannya.
+    """
+    mode = st.sidebar.radio(
+        "🧭 Pilih Kebutuhan",
+        ["BTT", "Sponsorship (Signature)"],
+        key="app_mode",
+    )
+    st.sidebar.divider()
+
+    if mode == "Sponsorship (Signature)":
+        import signature_report
+        signature_report.render_signature_app(config.AP_ASSET_MAP)
+    else:
+        main()
+
+
 if __name__ == "__main__":
-    main()
+    run_app()
