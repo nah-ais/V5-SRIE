@@ -1059,20 +1059,55 @@ def main() -> None:
     step_renderers[step]()
 
 
+def render_landing_page() -> None:
+    """Halaman awal — panitia pilih 1 dari 2 kebutuhan lewat kartu besar,
+    BUKAN dropdown/radio kecil di sidebar."""
+    st.title("📋 Sistem SRIE")
+    st.caption("Pilih kebutuhan Anda untuk melanjutkan.")
+    st.write("")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        with st.container(border=True):
+            st.markdown("### 📋 BTT")
+            st.write(
+                "Cleaning data Login & Register dari KoboToolbox — deteksi "
+                "duplikat, auto-append, dan pembentukan sheet BTT lengkap."
+            )
+            st.write("")
+            if st.button("Masuk ke BTT →", use_container_width=True, type="primary", key="landing_btt"):
+                st.session_state["app_mode"] = "BTT"
+                st.rerun()
+    with col2:
+        with st.container(border=True):
+            st.markdown("### ✍️ Sponsorship (Signature)")
+            st.write(
+                "Tarik data Login/Register dari KoboToolbox, pilih 1 kegiatan, "
+                "hasilkan PDF laporan absensi bertanda tangan."
+            )
+            st.write("")
+            if st.button("Masuk ke Sponsorship →", use_container_width=True, type="primary", key="landing_sponsorship"):
+                st.session_state["app_mode"] = "Sponsorship (Signature)"
+                st.rerun()
+
+
 def run_app() -> None:
     """
-    Titik masuk aplikasi — panitia pilih dulu 1 dari 2 kebutuhan sebelum
-    masuk ke fitur yang sesuai. TIDAK mengubah main() (alur BTT) sama
-    sekali — cuma menambahkan pilihan di depannya.
+    Titik masuk aplikasi — panitia pilih dulu 1 dari 2 kebutuhan lewat
+    HALAMAN LANDING (bukan cuma radio di sidebar) sebelum masuk ke fitur
+    yang sesuai. TIDAK mengubah main() (alur BTT) sama sekali — cuma
+    menambahkan halaman pilihan di depannya.
     """
-    mode = st.sidebar.radio(
-        "🧭 Pilih Kebutuhan",
-        ["BTT", "Sponsorship (Signature)"],
-        key="app_mode",
-    )
+    if not st.session_state.get("app_mode"):
+        render_landing_page()
+        return
+
+    if st.sidebar.button("← Ganti Kebutuhan", use_container_width=True):
+        st.session_state["app_mode"] = None
+        st.rerun()
     st.sidebar.divider()
 
-    if mode == "Sponsorship (Signature)":
+    if st.session_state["app_mode"] == "Sponsorship (Signature)":
         import signature_report
         signature_report.render_signature_app(config.AP_ASSET_MAP)
     else:
