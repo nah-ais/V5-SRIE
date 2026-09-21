@@ -278,6 +278,15 @@ BTT_REGISTER_FIELD_ALIASES = {
         "tipe_disabilitas", "Apakah_Anda_memiliki_kebutuhan",
         "apakah anda memiliki kebutuhan",
     ],
+    # Field gerbang mentah "Apakah_Anda_memiliki_kebutuhan" (ya/tidak) —
+    # dipakai KHUSUS untuk aturan force MVC Dimensi 2 (anak laki-laki
+    # berkebutuhan khusus JUGA di-force, sesuai formula form:
+    # forced_dimensi2 = perempuan ATAU (laki-laki DAN berkebutuhan khusus)).
+    # Field mentah yang SAMA dengan alias "Disability Status" di atas, tapi
+    # sengaja dipisah key-nya supaya jelas dipakai untuk tujuan berbeda.
+    "_Has_Disability_Gate_Raw": [
+        "Apakah_Anda_memiliki_kebutuhan", "apakah anda memiliki kebutuhan",
+    ],
     # --- Disability Category: 6 pertanyaan skrining terpisah (Washington Group
     # style), masing-masing di grup group_digital_absensi/group_eb6jo83/group_mg5uv10.
     # DITURUNKAN (bukan dipetakan langsung) di _compute_disability_category() —
@@ -433,10 +442,15 @@ BTT_REGISTER_FIELD_ALIASES = {
     # Kelurahan dropdown-nya kosong/menunjuk opsi "lainnya"). Dikombinasikan
     # di add_participant_profile_columns() (bukan di sini) karena butuh
     # logika prioritas antar 2 kolom, bukan cuma 1 alias resolusi biasa.
-    "Village": ["kelurahan", "Kelurahan", "desa", "Desa"],
+    "Village": [
+        # "Kelurahan_Final" = hasil kalkulasi Kobo sendiri (sudah menangani
+        # kasus "lainnya" secara internal) — PRIORITASKAN ini kalau ada.
+        "Kelurahan_Final", "kelurahan", "Kelurahan", "desa", "Desa",
+    ],
     "_Village_Other": [
         "kelurahan_lainnya", "Tuliskan_Kelurahannya", "kelurahan lainnya",
         "tuliskan kelurahannya", "desa_lainnya", "Tuliskan_Desanya", "tuliskan desanya",
+        "Kelurahan_Lainnya",
     ],
     "Sub-Village 1": ["rw", "RW"],
     "Sub-Village 2": ["rt", "RT"],
@@ -872,6 +886,11 @@ def _find_column_by_content_markers(df: pd.DataFrame, all_markers: list[str]) ->
 # ke-fallback-match ke kolom "kategori_peserta" yang sama sekali bukan ID.
 CUSTOM_ID_FIELD_ALIASES = [
     "custom_id", "cek_ID", "cek_id", "CekID", "id_kustom", "participant_id", "kode_id",
+    # Path lengkap terkonfirmasi dari template Login terbaru — "cek_ID" ada
+    # DI DALAM group_dewasa (bukan lagi di level atas), sedangkan resolver
+    # ID ini EXACT MATCH SAJA (tidak toleran suffix/grup seperti resolver
+    # field lain) — makanya path lengkap perlu didaftarkan eksplisit di sini.
+    "group_dewasa/cek_ID",
 ]
 
 
@@ -1092,15 +1111,11 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
     village_primary_values = df["Village"].fillna("").astype(str).str.strip()
     df["Village"] = village_other_values.where(village_other_values != "", village_primary_values)
 
-    # Sub-District & Zonal DITURUNKAN dari Village (lookup tabel, lihat
-    # VILLAGE_TO_SUBDISTRICT / SUBDISTRICT_TO_ZONAL) — bukan field mentah
-    # tersendiri dari Kobo. Village yang tidak dikenali -> dikosongkan
-    # (bukan ditebak).
-    # NOTE: "Sub-District" & "Zonal" sekarang sudah terisi lewat mekanisme
-    # alias biasa di atas (register_output_fields) — dibaca LANGSUNG dari
-    # field Register kalau ada (mis. hasil pulldata Kecamatan di form AP
-    # tertentu), TANPA tabel referensi/lookup apa pun. Kalau field itu tidak
-    # ada di form suatu AP, kolomnya otomatis kosong (bukan ditebak).
+    # NOTE: "Sub-District" & "Zonal" sudah terisi lewat mekanisme alias biasa
+    # di atas (register_output_fields) — dibaca LANGSUNG dari field Register
+    # kalau ada (mis. hasil pulldata Kecamatan di form AP tertentu), TANPA
+    # tabel referensi/lookup apa pun. Kalau field itu tidak ada di form suatu
+    # AP, kolomnya otomatis kosong (bukan ditebak).
 
     # Standarisasi Sex: Laki-laki -> Male, Perempuan -> Female.
     df["Sex"] = df["Sex"].apply(_sex_label)
@@ -1118,28 +1133,38 @@ def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.Data
 
     # =========================================================
     # ATURAN KEBIJAKAN MVC (BUKAN dari jawaban form) — berlaku untuk ANAK saja
-    # (Category == "Child"):
+    # (Category == "Child"), MENGIKUTI formula resmi yang sekarang SUDAH
+    # dihitung di form Kobo sendiri (forced_dimensi2/forced_dimensi4):
     #   - MVC- Dimensi 4 SELALU "Yes" untuk SEMUA anak (laki-laki maupun
-    #     perempuan), menimpa hasil deteksi dari jawaban form.
-    #   - MVC- Dimensi 2 SELALU "Yes" TAMBAHAN khusus untuk anak PEREMPUAN
-    #     (Sex == Female), menimpa hasil deteksi dari jawaban form.
+    #     perempuan).
+    #   - MVC- Dimensi 2 SELALU "Yes" untuk anak PEREMPUAN (Sex == Female),
+    #     ATAU anak LAKI-LAKI yang JUGA berkebutuhan khusus (field gerbang
+    #     "Apakah_Anda_memiliki_kebutuhan" = "ya"). Anak laki-laki TANPA
+    #     kebutuhan khusus TIDAK kena force Dimensi 2.
     #
-    # KENAPA: ini pengganti aturan "bonus +1 untuk perempuan" yang lama.
-    # Dengan Dimensi 4 dipaksa Yes untuk semua anak + Dimensi 2 dipaksa Yes
-    # tambahan untuk anak perempuan, maka SECARA OTOMATIS (tanpa bonus
-    # tambahan apa pun di MVC final):
-    #   - Anak PEREMPUAN sudah punya 2 dimensi Yes (Dimensi 2 & 4) pasti ->
-    #     MVC akhir SELALU "Yes", apa pun jawaban Dimensi 1/3.
-    #   - Anak LAKI-LAKI baru punya 1 dimensi Yes pasti (Dimensi 4) -> perlu
-    #     MINIMAL 1 dimensi lain (1/2/3) yang benar-benar Yes dari jawaban
-    #     form supaya total mencapai 2 dan MVC akhir jadi "Yes".
-    # Peserta DEWASA (Category != "Child") TIDAK terkena aturan paksa ini —
-    # dimensi mereka tetap murni dari jawaban form apa adanya.
+    # Kode ini SENGAJA tetap menegakkan aturan ini sendiri di sisi Python
+    # (bukan cuma percaya isi field mentah "Apakah_anak_keluarga_i_kerenta"
+    # yang mungkin sudah berisi token Dimensi2/Dimensi4 hasil kalkulasi form)
+    # — supaya hasilnya KONSISTEN untuk SEMUA AP, termasuk yang formnya
+    # belum/tidak punya kalkulasi forced_dimensi2/4 ini sama sekali.
+    #
+    # Efek akhirnya (tanpa bonus tambahan apa pun di perhitungan MVC final):
+    #   - Anak PEREMPUAN: Dimensi 2 & 4 pasti Yes -> MVC akhir SELALU "Yes".
+    #   - Anak LAKI-LAKI + berkebutuhan khusus: Dimensi 2 & 4 pasti Yes ->
+    #     MVC akhir SELALU "Yes" juga.
+    #   - Anak LAKI-LAKI TANPA kebutuhan khusus: cuma Dimensi 4 pasti Yes ->
+    #     perlu MINIMAL 1 dimensi lain (1/2/3) beneran Yes dari jawaban form.
+    # Peserta DEWASA (Category != "Child") TIDAK terkena aturan paksa ini.
     is_child = df["Category"] == "Child"
     is_female = df["Sex"].astype(str).str.strip().str.lower() == "female"
+    has_disability_gate = pd.Series(
+        [profile.get("_Has_Disability_Gate_Raw", "") for profile in profiles], index=df.index
+    ).astype(str).str.strip().str.lower() == "ya"
+
+    force_dimensi2 = is_child & (is_female | has_disability_gate)
 
     df.loc[is_child, "MVC- Dimensi 4"] = "Yes"
-    df.loc[is_child & is_female, "MVC- Dimensi 2"] = "Yes"
+    df.loc[force_dimensi2, "MVC- Dimensi 2"] = "Yes"
 
     # MVC = Yes jika total dimensi Yes (MVC- Dimensi 1..4) >= 2. TIDAK ADA
     # lagi bonus tambahan di sini — efek "perempuan lebih mudah MVC" sudah
