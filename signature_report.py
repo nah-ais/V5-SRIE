@@ -45,9 +45,12 @@ SIGNATURE_FIELD = "Silahkan_tanda_tangan_disini"
 
 LOGIN_NAMA_CANDIDATES = ["nama_child", "nama_pulldata_anak"]
 LOGIN_TGL_LAHIR_CANDIDATES = ["tgl_lahir_child", "tgl_lahir_pulldata_anak"]
+# Usia LANGSUNG (tanpa hitung dari tanggal lahir) — dipakai untuk peserta
+# BUKAN dampingan WVI (form kasih pilihan isi usia manual, bukan tgl lahir).
+LOGIN_USIA_LANGSUNG_CANDIDATES = ["usia_child"]
 LOGIN_KELURAHAN_CANDIDATES = ["Kelurahan", "kelurahan_pulldata_anak"]
 
-REGISTER_NAMA_FIELD = "nama_lengkap_parent"
+REGISTER_NAMA_CANDIDATES = ["nama_lengkap", "nama_lengkap_parent"]
 REGISTER_JENIS_KELAMIN_FIELD = "Jenis_Kelamin"
 REGISTER_NOMOR_TELEPON_FIELD = "Nomor_WA_HP"
 
@@ -146,17 +149,25 @@ def extract_rows(form_type: str, submissions: list[dict], tanggal_kegiatan: str)
     for s in submissions:
         if form_type == "Login":
             nama = _get_first_nonempty(s, LOGIN_NAMA_CANDIDATES)
-            tgl_lahir = _get_first_nonempty(s, LOGIN_TGL_LAHIR_CANDIDATES)
             kelurahan = _get_first_nonempty(s, LOGIN_KELURAHAN_CANDIDATES)
+            # Usia LANGSUNG (usia_child, untuk peserta bukan dampingan WVI)
+            # diprioritaskan kalau ADA — kalau tidak, hitung dari tanggal
+            # lahir seperti biasa (dampingan WVI / jalur anak via IDN).
+            usia_langsung = _get_first_nonempty(s, LOGIN_USIA_LANGSUNG_CANDIDATES)
+            if usia_langsung:
+                usia = usia_langsung
+            else:
+                tgl_lahir = _get_first_nonempty(s, LOGIN_TGL_LAHIR_CANDIDATES)
+                usia = calculate_age(tgl_lahir, tanggal_kegiatan)
             rows.append({
                 "nama": nama,
-                "usia": calculate_age(tgl_lahir, tanggal_kegiatan),
+                "usia": usia,
                 "kelurahan": kelurahan,
                 "submission": s,
             })
         else:
             rows.append({
-                "nama": _get_value(s, REGISTER_NAMA_FIELD),
+                "nama": _get_first_nonempty(s, REGISTER_NAMA_CANDIDATES),
                 "jenis_kelamin": humanize_label(_get_value(s, REGISTER_JENIS_KELAMIN_FIELD)),
                 "nomor_telepon": _get_value(s, REGISTER_NOMOR_TELEPON_FIELD),
                 "submission": s,
