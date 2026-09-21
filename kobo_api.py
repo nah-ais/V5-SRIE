@@ -108,12 +108,12 @@ def fetch_kobo_data(
         if target_col not in df.columns:
             df[target_col] = pd.NA
 
-    # PENTING: kolom mentah Kobo yang TIDAK ada di column_map (mis. custom_id/
-    # cek_ID hasil dynamic data attachment, atau field tambahan untuk BTT seperti
-    # Disability/RC/IDN/MVC/SP) TETAP DIPERTAHANKAN apa adanya (tidak dibuang),
-    # supaya bisa dikenali belakangan oleh resolver alias (lihat
-    # data_processor.resolve_custom_id_column & BTT_REGISTER_FIELD_ALIASES).
-    # Sebelumnya kolom-kolom ini dibuang di sini sehingga selalu kosong di BTT.
+    # PENTING: kolom mentah yang TIDAK ada di column_map TETAP DIPERTAHANKAN
+    # (bukan dibuang) — banyak field BTT tambahan (Institution, Position, RC,
+    # IDN, MVC, skrining disabilitas, jumlah anak asuh, dll.) dicari
+    # BELAKANGAN lewat pencarian nama field (lihat BTT_REGISTER_FIELD_ALIASES
+    # di data_processor.py), BUKAN lewat column_map ini. Kalau kolom mentah
+    # dibuang di sini, semua fitur itu akan selalu kosong.
     mapped_targets = list(dict.fromkeys(column_map.values()))
     other_cols = [c for c in df.columns if c not in mapped_targets]
     df = df[mapped_targets + other_cols]
@@ -148,9 +148,8 @@ def load_csv_fallback(uploaded_file, column_map: dict) -> pd.DataFrame:
         if target_col not in df.columns:
             df[target_col] = pd.NA
 
-    # Sama seperti fetch_kobo_data: kolom mentah di luar column_map TETAP
-    # dipertahankan (tidak dibuang) supaya custom_id & field BTT tambahan
-    # tetap bisa dikenali oleh resolver alias.
+    # PENTING: sama seperti fetch_kobo_data — kolom mentah yang tidak
+    # ter-mapping TETAP DIPERTAHANKAN, bukan dibuang.
     mapped_targets = list(dict.fromkeys(column_map.values()))
     other_cols = [c for c in df.columns if c not in mapped_targets]
     df = df[mapped_targets + other_cols]
