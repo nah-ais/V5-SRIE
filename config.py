@@ -18,13 +18,24 @@ LOGIN_COLUMN_MAP = {
     "nama_child": "nama",
     "tgl_lahir_child": "tanggal_lahir",
     "Kelurahan": "kelurahan",
-    "Tuliskan_Kelurahannya": "kelurahan_lainnya",
+    "Kelurahan_Lainnya": "kelurahan_lainnya",
     "group_ys5yz58/Area_Program": "area_program",
     "group_ys5yz58/Judul_Kegiatan": "judul_kegiatan",
     "group_ys5yz58/Tanggal_Kegiatan": "tanggal_kegiatan",
-    # ID hasil lookup otomatis form "Login: Verifikasi Peserta" — dikonfirmasi
-    # langsung dari API live (asset_uid aE3xS8zXQsU9KQsiT9T7PA).
-    "cek_ID": "custom_id",
+    # CATATAN PENTING soal custom_id: SENGAJA TIDAK dipetakan langsung di
+    # sini (baik dari "cek_ID" maupun "custom_id" top-level) — pemetaan
+    # struktural biasa (rename 1:1) BERBAHAYA kalau form punya LEBIH DARI 1
+    # kandidat field ID sekaligus (template terbaru punya field top-level
+    # "custom_id" YANG MENGGABUNGKAN custom_id_anak/cek_ID, ditambah field
+    # "cek_ID" itu sendiri masih ada juga) — kalau dua-duanya di-rename ke
+    # nama sama lewat dict ini, hasilnya 2 kolom bernama sama (rename
+    # tabrakan), bikin error di kode manapun yang akses df["custom_id"].
+    #
+    # Resolusi custom_id SEPENUHNYA diserahkan ke resolve_custom_id_column()
+    # + CUSTOM_ID_FIELD_ALIASES (data_processor.py), yang sudah didesain
+    # aman untuk kasus banyak kandidat: exact-match SATU PER SATU sesuai
+    # urutan prioritas ("custom_id" top-level dicoba duluan, "cek_ID"
+    # fallback kalau custom_id tidak ada) — bukan rename massal.
 }
 
 REGISTER_COLUMN_MAP = {
