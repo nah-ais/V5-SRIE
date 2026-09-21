@@ -59,8 +59,8 @@ REGISTER_COLUMN_MAP = {
     "group_digital_absensi/group_wx4wq68/Tanggal_Kegiatan": "tanggal_kegiatan",
     "group_digital_absensi/group_informasi_respondent/Apakah_Anda_memiliki_kebutuhan": "tipe_disabilitas",
     "group_digital_absensi/group_informasi_respondent/Kategori_Peserta": "kategori_peserta",
-    # ID unik peserta — dikonfirmasi langsung dari API live
-    # (asset_uid aRVadKAkpz2PYMaZH2gXKU). Contoh nilai: 'SBY-260820-40d'.
+    # ID unik peserta — path lengkap dikonfirmasi dari struktur form Register.
+    # Contoh nilai (format umum, BUKAN data asli): 'SBY-260820-40d'.
     "group_digital_absensi/group_informasi_respondent/custom_id": "custom_id",
 }
 
