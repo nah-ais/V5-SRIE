@@ -31,6 +31,7 @@ from data_processor import (
     resolve_custom_id_column,
     resolve_register_duplicate,
     append_register_to_login,
+    filter_btt_participants_only,
     add_fiscal_columns,
     add_month_first_column,
     add_participant_profile_columns,
@@ -830,6 +831,12 @@ def _build_btt_sheet(df_login: pd.DataFrame, df_register: pd.DataFrame) -> pd.Da
     Code/Output Code/info project kosong (supaya baris peserta tidak hilang
     cuma karena belum sempat diisi).
     """
+    # Filter KHUSUS pembentukan BTT: buang baris non-Peserta (Fasilitator/
+    # Pendamping/Staff WVI, di-traceback dari Kategori_Peserta di Register).
+    # TIDAK memengaruhi Login/Register di session_state — cleaning/dedup
+    # Login & Register di step sebelumnya tetap proses SEMUA kategori.
+    df_login = filter_btt_participants_only(df_login, df_register)
+
     df_base = add_fiscal_columns(df_login, date_column="tanggal_kegiatan")
     df_base = add_month_first_column(df_base, df_register, date_column="tanggal_kegiatan")
     df_base = add_participant_profile_columns(df_base, df_register)
