@@ -101,12 +101,24 @@ def canonicalize_custom_ids(
     )
 
     # Kembalikan ke dataset asal dan pertahankan urutan baris.
-    login_out = combined[combined["_source_dataset"] == "Login"].sort_values("_source_order", kind="stable").drop(
-        columns=["_source_dataset", "_source_order", "_identity_key", "_submit_dt"], errors="ignore"
-    ).reset_index(drop=True)
-    register_out = combined[combined["_source_dataset"] == "Register"].sort_values("_source_order", kind="stable").drop(
-        columns=["_source_dataset", "_source_order", "_identity_key", "_submit_dt"], errors="ignore"
-    ).reset_index(drop=True)
+    # PENTING: batasi kolom balik ke kolom ASLI tiap frame (login.columns /
+    # register.columns) — BUKAN semua kolom hasil pd.concat(). pd.concat
+    # menggabungkan UNION seluruh kolom Login+Register (kolom yang cuma ada
+    # di salah satu frame diisi NaN di frame lainnya oleh pandas). Tanpa
+    # pembatasan ini, login_out/register_out akan sama-sama membawa kolom
+    # mentah milik frame LAWANNYA (kosong/NaN) — bikin kedua sheet output
+    # kelihatan identik strukturnya walau datanya beda.
+    login_cols = [c for c in login.columns if c in combined.columns] + \
+        (["custom_id"] if "custom_id" not in login.columns else [])
+    register_cols = [c for c in register.columns if c in combined.columns] + \
+        (["custom_id"] if "custom_id" not in register.columns else [])
+
+    login_out = combined[combined["_source_dataset"] == "Login"].sort_values("_source_order", kind="stable")[
+        login_cols
+    ].reset_index(drop=True)
+    register_out = combined[combined["_source_dataset"] == "Register"].sort_values("_source_order", kind="stable")[
+        register_cols
+    ].reset_index(drop=True)
 
     # Pastikan schema kosong tetap sama seperti input.
     if login.empty:
