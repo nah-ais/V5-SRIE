@@ -374,17 +374,20 @@ def render_signature_app(ap_asset_map: dict) -> None:
 
     rows = extract_rows(form_type, matching_submissions, selected_tanggal)
 
-    if form_type == "Register":
-        st.divider()
-        st.subheader("5️⃣ Pengecekan Data")
-        rows, n_removed = remove_duplicate_rows(rows)
-        col1, col2 = st.columns(2)
-        col1.metric("Data Awal", len(matching_submissions))
-        col2.metric("Duplikat Dihapus", n_removed)
-        if rows:
-            render_simple_eda(rows)
-        else:
-            st.warning("⚠️ Tidak ada data tersisa setelah pembersihan.")
+    # Cleaning duplikat OTOMATIS untuk KEDUA jenis form (Login maupun
+    # Register) — bukan cuma Register seperti sebelumnya.
+    st.divider()
+    st.subheader("5️⃣ Pengecekan Data")
+    rows, n_removed = remove_duplicate_rows(rows)
+    col1, col2 = st.columns(2)
+    col1.metric("Data Awal", len(matching_submissions))
+    col2.metric("Duplikat Dihapus", n_removed)
+    if not rows:
+        st.warning("⚠️ Tidak ada data tersisa setelah pembersihan.")
+    elif form_type == "Register":
+        # EDA sederhana (distribusi Jenis Kelamin) cuma relevan untuk
+        # Register — Login tidak punya field Jenis Kelamin.
+        render_simple_eda(rows)
 
     st.divider()
 
