@@ -1129,14 +1129,15 @@ def render_landing_page() -> None:
                 st.rerun()
     with col2:
         with st.container(border=True):
-            st.markdown("### ✍️ Sponsorship (Signature)")
+            st.markdown("### 📋 Signature Report per Kegiatan")
             st.write(
-                "Tarik data Login/Register dari KoboToolbox, pilih 1 kegiatan, "
-                "hasilkan PDF laporan absensi bertanda tangan."
+                "Pilih 1 kegiatan, sistem otomatis gabungkan Login + Register "
+                "(auto-append) dan bersihkan duplikat, lalu hasilkan PDF laporan "
+                "absensi bertanda tangan."
             )
             st.write("")
-            if st.button("Masuk ke Sponsorship →", use_container_width=True, type="primary", key="landing_sponsorship"):
-                st.session_state["app_mode"] = "Sponsorship (Signature)"
+            if st.button("Masuk ke Signature Report →", use_container_width=True, type="primary", key="landing_signature"):
+                st.session_state["app_mode"] = "Signature Report"
                 st.rerun()
 
 
@@ -1190,7 +1191,7 @@ def run_app() -> None:
         st.rerun()
     st.sidebar.divider()
 
-    if st.session_state["app_mode"] == "Sponsorship (Signature)":
+    if st.session_state["app_mode"] == "Signature Report":
         import signature_report
         signature_report.render_signature_app(config.AP_ASSET_MAP)
         return
