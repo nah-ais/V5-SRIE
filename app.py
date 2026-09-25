@@ -143,35 +143,54 @@ def render_sidebar() -> float:
 # LANGKAH ①: MUAT DATA
 # =========================================================
 def _render_kobo_api_form(selected_ap: str) -> None:
-    """Form untuk menarik data langsung dari KoboToolbox API, dengan preset dari AP terpilih."""
-    default_token = config.KOBO_TOKEN
-    default_login = config.FORM_UID_LOGIN
-    default_register = config.FORM_UID_REGISTRASI
-    if selected_ap != "(Manual)":
-        ap_cfg = config.AP_ASSET_MAP[selected_ap]
-        default_token = ap_cfg.get("token") or config.KOBO_TOKEN
-        default_login = ap_cfg["login"]
-        default_register = ap_cfg["register"]
+    """
+    Form untuk menarik data langsung dari KoboToolbox API.
 
+    Kalau AP yang dipilih sudah punya kredensial LENGKAP di secrets.toml
+    (token + Asset UID Login + Register), UI HANYA menampilkan 1 tombol
+    "Muat Data" — TIDAK ADA field token/UID yang ditampilkan sama sekali
+    (kredensial itu rahasia, tidak boleh kelihatan/ke-copy orang lain saat
+    layar dibagikan). Field manual HANYA muncul sebagai fallback kalau AP
+    "(Manual)" dipilih atau kredensial AP itu belum lengkap di secrets.toml.
+    """
     if not config.AP_ASSET_MAP:
         st.caption(
             "ℹ️ Belum ada Area Program yang terdaftar di secrets.toml. "
-            "Isi kredensial secara manual di bawah, atau tambahkan blok "
-            "`[kobo.ap.NamaAP]` di secrets.toml supaya muncul di dropdown ini."
+            "Tambahkan blok `[kobo.ap.NamaAP]` supaya muncul di dropdown ini, "
+            "atau isi kredensial secara manual di bawah."
         )
 
-    with st.form("load_kobo_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            api_token = st.text_input(
-                "API Token", value=default_token, type="password", key=f"token_{selected_ap}"
-            )
-            base_url = st.text_input("Base URL", value=config.KOBO_ENDPOINT)
-        with col2:
-            asset_login = st.text_input("Asset UID Login", value=default_login, key=f"uid_login_{selected_ap}")
-            asset_register = st.text_input("Asset UID Register", value=default_register, key=f"uid_register_{selected_ap}")
+    ap_cfg = config.AP_ASSET_MAP.get(selected_ap, {}) if selected_ap != "(Manual)" else {}
+    kredensial_lengkap = bool(ap_cfg.get("token") and ap_cfg.get("login") and ap_cfg.get("register"))
 
-        submitted = st.form_submit_button("📥 Muat Data dari KoboToolbox", use_container_width=True)
+    if kredensial_lengkap:
+        # --- Kredensial sudah lengkap dari secrets.toml -> SEMBUNYIKAN semua ---
+        api_token = ap_cfg["token"]
+        asset_login = ap_cfg["login"]
+        asset_register = ap_cfg["register"]
+        base_url = ap_cfg.get("base_url") or config.KOBO_ENDPOINT
+        submitted = st.button(
+            "📥 Muat Data dari KoboToolbox", type="primary", use_container_width=True, key=f"load_btn_{selected_ap}"
+        )
+    else:
+        # --- Fallback: AP "(Manual)" atau kredensial belum lengkap di secrets ---
+        default_token = ap_cfg.get("token") or config.KOBO_TOKEN
+        default_login = ap_cfg.get("login") or config.FORM_UID_LOGIN
+        default_register = ap_cfg.get("register") or config.FORM_UID_REGISTRASI
+        default_base_url = ap_cfg.get("base_url") or config.KOBO_ENDPOINT
+
+        with st.form("load_kobo_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                api_token = st.text_input(
+                    "API Token", value=default_token, type="password", key=f"token_{selected_ap}"
+                )
+                base_url = st.text_input("Base URL", value=default_base_url)
+            with col2:
+                asset_login = st.text_input("Asset UID Login", value=default_login, key=f"uid_login_{selected_ap}")
+                asset_register = st.text_input("Asset UID Register", value=default_register, key=f"uid_register_{selected_ap}")
+
+            submitted = st.form_submit_button("📥 Muat Data dari KoboToolbox", use_container_width=True)
 
     if not submitted:
         return
