@@ -224,7 +224,7 @@ def _build_ap_asset_map() -> dict:
             "login": values.get("login_uid", ""),
             "register": values.get("register_uid", ""),
             # "base_url" ditambahkan (additive, tidak mengubah 3 key di atas
-            # yang sudah dipakai alur BTT) — dipakai fitur Sponsorship/Signature
+            # yang sudah dipakai alur BTT) — dipakai fitur Signature Report
             # untuk AP yang pakai server Kobo berbeda (mis. kflight.wahanavisi.org).
             "base_url": values.get("base_url") or KOBO_ENDPOINT,
         }
