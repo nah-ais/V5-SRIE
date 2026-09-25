@@ -907,6 +907,46 @@ def _build_btt_sheet(df_login: pd.DataFrame, df_register: pd.DataFrame) -> pd.Da
     return df_btt
 
 
+def _clean_export_columns(df: pd.DataFrame, kind: str) -> pd.DataFrame:
+    """
+    Pilih & ganti nama kolom jadi rapi/jelas untuk file yang DIUNDUH panitia
+    (Login/Register) — TIDAK memengaruhi data internal (session_state) yang
+    dipakai proses cleaning/BTT, cuma tampilan hasil unduhan.
+
+    Kolom teknis/internal (id_kobo, timestamp_submit, _row_uid, dan seluruh
+    field mentah Kobo yang belum ter-mapping) SENGAJA disembunyikan di sini —
+    tetap ada di data internal untuk keperluan matching, cuma tidak perlu
+    ditampilkan ke panitia karena bikin bingung.
+    """
+    common_rename = {
+        "custom_id": "ID Peserta",
+        "nama": "Nama",
+        "tanggal_lahir": "Tanggal Lahir",
+        "usia": "Usia",
+        "kelurahan": "Kelurahan",
+        "kelurahan_lainnya": "Kelurahan (Lainnya)",
+        "area_program": "Area Program",
+        "judul_kegiatan": "Judul Kegiatan",
+        "tanggal_kegiatan": "Tanggal Kegiatan",
+    }
+    register_only_rename = {
+        "jenis_kelamin": "Jenis Kelamin",
+        "nama_kepala_keluarga": "Nama Kepala Keluarga",
+        "rt": "RT",
+        "rw": "RW",
+        "nomor_hp": "Nomor HP",
+        "tipe_disabilitas": "Ada Kebutuhan Khusus",
+        "kategori_peserta": "Kategori Peserta",
+    }
+
+    rename_map = dict(common_rename)
+    if kind == "register":
+        rename_map.update(register_only_rename)
+
+    available_cols = [c for c in rename_map if c in df.columns]
+    return df[available_cols].rename(columns=rename_map)
+
+
 def render_export_step() -> None:
     st.header("⑥ Export")
     df_login = st.session_state[config.SS_LOGIN_DF].copy()
@@ -968,20 +1008,22 @@ def render_export_step() -> None:
         )
 
     st.subheader("Download")
+    df_login_export = _clean_export_columns(df_login, "login")
+    df_register_export = _clean_export_columns(df_register, "register")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.download_button(
-            "📄 Login Clean CSV", data=to_csv_bytes(df_login),
+            "📄 Login Clean CSV", data=to_csv_bytes(df_login_export),
             file_name="login_clean.csv", mime="text/csv", use_container_width=True,
         )
     with col2:
         st.download_button(
-            "📄 Register Clean CSV", data=to_csv_bytes(df_register),
+            "📄 Register Clean CSV", data=to_csv_bytes(df_register_export),
             file_name="register_clean.csv", mime="text/csv", use_container_width=True,
         )
     with col3:
         try:
-            excel_data = to_excel_bytes({"Login": df_login, "Register": df_register, "BTT": df_btt})
+            excel_data = to_excel_bytes({"Login": df_login_export, "Register": df_register_export, "BTT": df_btt})
             st.download_button(
                 "📊 Excel Lengkap", data=excel_data,
                 file_name="dataset_kehadiran_clean.xlsx",
