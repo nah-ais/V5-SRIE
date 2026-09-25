@@ -8,8 +8,6 @@ Memusatkan konfigurasi di sini memudahkan maintenance jika suatu saat
 struktur form Kobo berubah (tambah field, ganti nama field, dsb).
 """
 
-[theme]
-base = "light"
 # =========================================================
 # 1. MAPPING KOLOM KOBOTOOLBOX -> NAMA KOLOM INTERNAL
 # =========================================================
