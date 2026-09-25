@@ -1,8 +1,8 @@
 """
 signature_report.py
 ----------------------
-Fitur "Sponsorship (Signature)" — bagian TERPISAH dari alur BTT utama, cuma
-digabung ke aplikasi yang sama supaya panitia tinggal pilih 1 dari 2
+Fitur "Signature Report per Kegiatan" — bagian TERPISAH dari alur BTT
+utama, cuma digabung ke aplikasi yang sama supaya panitia tinggal pilih
 kebutuhan di layar awal. TIDAK menyentuh/memanggil fungsi apa pun dari
 app.py, config.py (kecuali baca AP_ASSET_MAP), data_processor.py, atau
 matching.py — supaya alur BTT yang sudah ada TIDAK TERPENGARUH sama sekali.
@@ -11,10 +11,14 @@ Semua session_state di sini pakai prefix "sig_" supaya tidak bentrok
 dengan session_state punya alur BTT (yang sama sekali tidak pakai prefix
 ini).
 
-Menghasilkan PDF laporan (Nomor, Nama, [Usia/Kelurahan ATAU Jenis
-Kelamin/No. Telepon tergantung jenis form], Tanda Tangan) untuk 1 kegiatan
-(Tanggal + Judul) yang dipilih panitia. Untuk Register, ada langkah
-tambahan: hapus duplikat + EDA sederhana sebelum PDF dibuat.
+ALUR (disederhanakan — tidak ada lagi pilihan "Jenis Form"):
+  1. Panitia pilih Area Program, Tanggal Kegiatan, Judul Kegiatan.
+  2. Sistem otomatis tarik Login DAN Register sekaligus.
+  3. Auto-append: peserta yang sudah Register tapi belum Login untuk
+     kegiatan ini ditambahkan ke daftar (data Usia/Kelurahan diambil dari
+     Register-nya).
+  4. Baru SETELAH auto-append selesai, cleaning duplikat otomatis jalan.
+  5. PDF final: Nomor, Nama, Usia, Kelurahan, Tanda Tangan.
 """
 
 from __future__ import annotations
@@ -51,8 +55,6 @@ LOGIN_USIA_LANGSUNG_CANDIDATES = ["usia_child"]
 LOGIN_KELURAHAN_CANDIDATES = ["Kelurahan", "kelurahan_pulldata_anak"]
 
 REGISTER_NAMA_CANDIDATES = ["nama_lengkap", "nama_lengkap_parent"]
-REGISTER_JENIS_KELAMIN_FIELD = "Jenis_Kelamin"
-REGISTER_NOMOR_TELEPON_FIELD = "Nomor_WA_HP"
 # Dipakai KHUSUS untuk auto-append Register->Login (ambil Usia/Kelurahan dari
 # Register untuk ditampilkan dengan "bentuk" kolom Login: Nama/Usia/Kelurahan).
 REGISTER_USIA_CANDIDATES = ["usia_final", "usia", "usia_manual"]
@@ -61,16 +63,8 @@ REGISTER_KELURAHAN_CANDIDATES = ["Kelurahan_Final", "Kelurahan_001", "Kelurahan"
 # (konsisten dengan resolve_custom_id_column di data_processor.py).
 CUSTOM_ID_CANDIDATES = ["custom_id", "cek_ID", "group_dewasa/cek_ID"]
 
-FORM_CONFIGS = {
-    "Login": {
-        "uid_key": "login",
-        "pdf_columns": [("Nama", "nama"), ("Usia", "usia"), ("Kelurahan", "kelurahan")],
-    },
-    "Register": {
-        "uid_key": "register",
-        "pdf_columns": [("Nama", "nama"), ("Jenis Kelamin", "jenis_kelamin"), ("Nomor Telepon", "nomor_telepon")],
-    },
-}
+# Kolom PDF final — TUNGGAL, tidak ada lagi varian per jenis form.
+PDF_COLUMNS = [("Nama", "nama"), ("Usia", "usia"), ("Kelurahan", "kelurahan")]
 
 
 # =========================================================
@@ -171,7 +165,7 @@ def auto_append_register_to_login(
     login_submissions: list[dict], register_submissions: list[dict],
 ) -> tuple[list[dict], int]:
     """
-    Auto-append Register->Login KHUSUS untuk fitur Sponsorship (mode Login):
+    Auto-append Register->Login untuk Signature Report per Kegiatan:
     orang yang sudah Register untuk kegiatan ini tapi custom_id-nya TIDAK
     ketemu di Login manapun, ditambahkan sebagai baris tambahan (ala Login).
 
@@ -201,39 +195,33 @@ def auto_append_register_to_login(
     return login_submissions + appended, len(appended)
 
 
-def extract_rows(form_type: str, submissions: list[dict], tanggal_kegiatan: str) -> list[dict]:
+def extract_rows(submissions: list[dict], tanggal_kegiatan: str) -> list[dict]:
+    """
+    Bentuk baris (Nama/Usia/Kelurahan) dari submission — baik yang genuine
+    Login MAUPUN hasil auto-append dari Register (submission itu tidak
+    punya field Login sama sekali, makanya selalu FALLBACK ke field
+    Register kalau field Login-nya kosong).
+    """
     rows = []
     for s in submissions:
-        if form_type == "Login":
-            # Coba field Login dulu; kalau kosong, FALLBACK ke field Register
-            # (relevan untuk submission hasil auto-append di
-            # auto_append_register_to_login — submission itu ASLINYA dari
-            # Register, tidak punya field Login sama sekali).
-            nama = _get_first_nonempty(s, LOGIN_NAMA_CANDIDATES) or _get_first_nonempty(s, REGISTER_NAMA_CANDIDATES)
-            kelurahan = _get_first_nonempty(s, LOGIN_KELURAHAN_CANDIDATES) or _get_first_nonempty(s, REGISTER_KELURAHAN_CANDIDATES)
+        nama = _get_first_nonempty(s, LOGIN_NAMA_CANDIDATES) or _get_first_nonempty(s, REGISTER_NAMA_CANDIDATES)
+        kelurahan = _get_first_nonempty(s, LOGIN_KELURAHAN_CANDIDATES) or _get_first_nonempty(s, REGISTER_KELURAHAN_CANDIDATES)
 
-            usia_langsung = _get_first_nonempty(s, LOGIN_USIA_LANGSUNG_CANDIDATES)
-            if usia_langsung:
-                usia = usia_langsung
-            else:
-                tgl_lahir = _get_first_nonempty(s, LOGIN_TGL_LAHIR_CANDIDATES)
-                usia = calculate_age(tgl_lahir, tanggal_kegiatan) if tgl_lahir else ""
-                if not usia:
-                    usia = _get_first_nonempty(s, REGISTER_USIA_CANDIDATES)
-
-            rows.append({
-                "nama": nama,
-                "usia": usia,
-                "kelurahan": kelurahan,
-                "submission": s,
-            })
+        usia_langsung = _get_first_nonempty(s, LOGIN_USIA_LANGSUNG_CANDIDATES)
+        if usia_langsung:
+            usia = usia_langsung
         else:
-            rows.append({
-                "nama": _get_first_nonempty(s, REGISTER_NAMA_CANDIDATES),
-                "jenis_kelamin": humanize_label(_get_value(s, REGISTER_JENIS_KELAMIN_FIELD)),
-                "nomor_telepon": _get_value(s, REGISTER_NOMOR_TELEPON_FIELD),
-                "submission": s,
-            })
+            tgl_lahir = _get_first_nonempty(s, LOGIN_TGL_LAHIR_CANDIDATES)
+            usia = calculate_age(tgl_lahir, tanggal_kegiatan) if tgl_lahir else ""
+            if not usia:
+                usia = _get_first_nonempty(s, REGISTER_USIA_CANDIDATES)
+
+        rows.append({
+            "nama": nama,
+            "usia": usia,
+            "kelurahan": kelurahan,
+            "submission": s,
+        })
     return rows
 
 
@@ -248,20 +236,6 @@ def remove_duplicate_rows(rows: list[dict]) -> tuple[list[dict], int]:
             seen.add(key)
         cleaned.append(row)
     return cleaned, len(rows) - len(cleaned)
-
-
-def render_simple_eda(rows: list[dict]) -> None:
-    st.markdown("**Distribusi Jenis Kelamin**")
-    gender_counts: dict[str, int] = {}
-    for row in rows:
-        g = row.get("jenis_kelamin", "") or "(kosong)"
-        gender_counts[g] = gender_counts.get(g, 0) + 1
-    if gender_counts:
-        st.bar_chart(gender_counts)
-
-    st.markdown("**Preview Data (setelah dibersihkan)**")
-    preview = [{"Nama": r.get("nama", ""), "Jenis Kelamin": r.get("jenis_kelamin", ""), "Nomor Telepon": r.get("nomor_telepon", "")} for r in rows]
-    st.dataframe(preview, use_container_width=True, hide_index=True)
 
 
 # =========================================================
@@ -285,7 +259,6 @@ def build_attendance_pdf(
     tanggal_kegiatan: str,
     rows: list[dict],
     api_token: str,
-    pdf_columns: list[tuple[str, str]],
 ) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -304,7 +277,7 @@ def build_attendance_pdf(
         HRFlowable(width="100%", thickness=1, color=colors.HexColor("#1E3A8A"), spaceAfter=14),
     ]
 
-    header_row = ["No"] + [label for label, _ in pdf_columns] + ["Tanda Tangan"]
+    header_row = ["No"] + [label for label, _ in PDF_COLUMNS] + ["Tanda Tangan"]
     table_data = [header_row]
     cell_style = ParagraphStyle("Cell", parent=styles["Normal"], fontSize=9, leading=11)
     cell_center_style = ParagraphStyle("CellCenter", parent=cell_style, alignment=TA_CENTER)
@@ -312,7 +285,7 @@ def build_attendance_pdf(
     for i, row in enumerate(rows, start=1):
         signature_bytes = download_signature_bytes(row["submission"], api_token)
         data_row = [Paragraph(str(i), cell_center_style)]
-        for _, key in pdf_columns:
+        for _, key in PDF_COLUMNS:
             data_row.append(Paragraph(str(row.get(key, "") or "-"), cell_style))
         data_row.append(make_signature_flowable(signature_bytes))
         table_data.append(data_row)
@@ -320,8 +293,8 @@ def build_attendance_pdf(
     total_width = 18 * cm
     no_width = 1.2 * cm
     sig_width = 4 * cm
-    middle_width = (total_width - no_width - sig_width) / len(pdf_columns)
-    col_widths = [no_width] + [middle_width] * len(pdf_columns) + [sig_width]
+    middle_width = (total_width - no_width - sig_width) / len(PDF_COLUMNS)
+    col_widths = [no_width] + [middle_width] * len(PDF_COLUMNS) + [sig_width]
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
@@ -359,17 +332,17 @@ def build_attendance_pdf(
 # =========================================================
 def render_signature_app(ap_asset_map: dict) -> None:
     """
-    Render seluruh UI fitur Sponsorship (Signature). Dipanggil dari app.py
-    HANYA kalau panitia memilih mode "Sponsorship (Signature)" di layar awal.
+    Render seluruh UI fitur Signature Report per Kegiatan. Dipanggil dari
+    app.py HANYA kalau panitia memilih fitur ini di layar awal.
 
     Parameters
     ----------
     ap_asset_map : dict
         Sama persis config.AP_ASSET_MAP (dari secrets.toml) — dipakai ULANG,
-        BUKAN baca secrets terpisah, supaya 1 sumber AP untuk kedua fitur.
+        BUKAN baca secrets terpisah, supaya 1 sumber AP untuk semua fitur.
     """
-    st.title("✍️ Sponsorship (Signature) — Laporan Absensi + Tanda Tangan")
-    st.caption("Tarik data dari KoboToolbox, pilih 1 kegiatan, hasilkan PDF absensi bertanda tangan.")
+    st.title("📋 Signature Report per Kegiatan")
+    st.caption("Pilih 1 kegiatan, sistem otomatis gabungkan Login + Register (auto-append), bersihkan duplikat, lalu hasilkan PDF absensi bertanda tangan.")
 
     if not ap_asset_map:
         st.error(
@@ -378,37 +351,29 @@ def render_signature_app(ap_asset_map: dict) -> None:
         )
         return
 
-    form_type = st.selectbox("1️⃣ Pilih Jenis Form", ["Login", "Register"], key="sig_form_type")
-    form_config = FORM_CONFIGS[form_type]
-
-    selected_ap = st.selectbox("2️⃣ Pilih Area Program", sorted(ap_asset_map.keys()), key="sig_selected_ap")
+    selected_ap = st.selectbox("1️⃣ Pilih Area Program", sorted(ap_asset_map.keys()), key="sig_selected_ap")
     ap_config = ap_asset_map[selected_ap]
-    asset_uid = ap_config.get(form_config["uid_key"], "")
+    login_uid = ap_config.get("login", "")
+    register_uid = ap_config.get("register", "")
 
-    if not asset_uid:
-        st.error(f"⚠️ Asset UID Form {form_type} untuk '{selected_ap}' belum diisi di secrets.toml.")
+    if not login_uid or not register_uid:
+        st.error(f"⚠️ Asset UID Login/Register untuk '{selected_ap}' belum lengkap di secrets.toml.")
         return
 
-    load_key = f"sig_submissions_{form_type}"
-    loaded_ap_key = f"sig_loaded_ap_{form_type}"
+    load_key = "sig_login_submissions"
+    register_key = "sig_register_submissions"
+    loaded_ap_key = "sig_loaded_ap"
 
-    if st.button(f"🔄 Tarik Data Form {form_type}", use_container_width=True, key="sig_fetch_btn"):
-        with st.spinner("Mengambil data dari KoboToolbox..."):
+    if st.button("🔄 Tarik Data", use_container_width=True, key="sig_fetch_btn"):
+        with st.spinner("Mengambil data Login & Register dari KoboToolbox..."):
             try:
                 base_url = ap_config.get("base_url") or DEFAULT_BASE_URL
-                submissions = fetch_submissions(asset_uid, ap_config["token"], base_url)
-                st.session_state[load_key] = submissions
+                login_submissions = fetch_submissions(login_uid, ap_config["token"], base_url)
+                register_submissions = fetch_submissions(register_uid, ap_config["token"], base_url)
+                st.session_state[load_key] = login_submissions
+                st.session_state[register_key] = register_submissions
                 st.session_state[loaded_ap_key] = selected_ap
-
-                # Khusus mode Login: TARIK JUGA Register (untuk auto-append
-                # Register->Login sebelum pengecekan duplikat, lihat di bawah).
-                if form_type == "Login" and ap_config.get("register"):
-                    register_submissions = fetch_submissions(ap_config["register"], ap_config["token"], base_url)
-                    st.session_state["sig_register_for_append"] = register_submissions
-                    st.session_state["sig_register_for_append_ap"] = selected_ap
-                    st.success(f"✅ {len(submissions)} data Login + {len(register_submissions)} data Register (untuk auto-append) berhasil ditarik.")
-                else:
-                    st.success(f"✅ {len(submissions)} data {form_type} berhasil ditarik untuk {selected_ap}.")
+                st.success(f"✅ {len(login_submissions)} data Login + {len(register_submissions)} data Register berhasil ditarik.")
             except Exception as e:
                 st.error(f"❌ Gagal mengambil data: {e}")
 
@@ -416,17 +381,21 @@ def render_signature_app(ap_asset_map: dict) -> None:
         st.info("📭 Klik tombol di atas untuk menarik data dulu.")
         return
 
-    submissions = st.session_state[load_key]
+    login_submissions = st.session_state[load_key]
+    register_submissions = st.session_state.get(register_key, [])
 
-    tanggal_list = sorted({_get_value(s, TANGGAL_KEGIATAN_FIELD) for s in submissions if _get_value(s, TANGGAL_KEGIATAN_FIELD)})
+    all_submissions_for_dropdown = login_submissions + register_submissions
+    tanggal_list = sorted({
+        _get_value(s, TANGGAL_KEGIATAN_FIELD) for s in all_submissions_for_dropdown if _get_value(s, TANGGAL_KEGIATAN_FIELD)
+    })
     if not tanggal_list:
         st.warning("⚠️ Tidak ada data dengan Tanggal Kegiatan yang terisi.")
         return
 
-    selected_tanggal = st.selectbox("3️⃣ Pilih Tanggal Kegiatan", tanggal_list, key="sig_tanggal")
+    selected_tanggal = st.selectbox("2️⃣ Pilih Tanggal Kegiatan", tanggal_list, key="sig_tanggal")
 
     raw_judul_list = sorted({
-        _get_value(s, JUDUL_KEGIATAN_FIELD) for s in submissions
+        _get_value(s, JUDUL_KEGIATAN_FIELD) for s in all_submissions_for_dropdown
         if _get_value(s, TANGGAL_KEGIATAN_FIELD) == selected_tanggal and _get_value(s, JUDUL_KEGIATAN_FIELD)
     })
     if not raw_judul_list:
@@ -434,47 +403,31 @@ def render_signature_app(ap_asset_map: dict) -> None:
         return
 
     display_to_raw = {humanize_label(j): j for j in raw_judul_list}
-    selected_judul_display = st.selectbox("4️⃣ Pilih Judul Kegiatan", sorted(display_to_raw.keys()), key="sig_judul")
+    selected_judul_display = st.selectbox("3️⃣ Pilih Judul Kegiatan", sorted(display_to_raw.keys()), key="sig_judul")
     selected_judul_raw = display_to_raw[selected_judul_display]
 
-    matching_submissions = [
-        s for s in submissions
+    matching_login = [
+        s for s in login_submissions
         if _get_value(s, TANGGAL_KEGIATAN_FIELD) == selected_tanggal and _get_value(s, JUDUL_KEGIATAN_FIELD) == selected_judul_raw
     ]
-    st.caption(f"📊 {len(matching_submissions)} data ditemukan untuk kegiatan ini.")
+    matching_register = [
+        s for s in register_submissions
+        if _get_value(s, TANGGAL_KEGIATAN_FIELD) == selected_tanggal and _get_value(s, JUDUL_KEGIATAN_FIELD) == selected_judul_raw
+    ]
 
-    # --- Auto-append Register->Login (KHUSUS mode Login), SEBELUM dedup ---
-    n_appended = 0
-    if form_type == "Login" and st.session_state.get("sig_register_for_append_ap") == selected_ap:
-        register_pool = st.session_state.get("sig_register_for_append", [])
-        register_matching = [
-            s for s in register_pool
-            if _get_value(s, TANGGAL_KEGIATAN_FIELD) == selected_tanggal and _get_value(s, JUDUL_KEGIATAN_FIELD) == selected_judul_raw
-        ]
-        matching_submissions, n_appended = auto_append_register_to_login(matching_submissions, register_matching)
-
-    rows = extract_rows(form_type, matching_submissions, selected_tanggal)
-
-    # Cleaning duplikat OTOMATIS untuk KEDUA jenis form (Login maupun
-    # Register) — bukan cuma Register seperti sebelumnya.
-    st.divider()
-    st.subheader("5️⃣ Pengecekan Data")
+    # --- Auto-append Register->Login DULU, baru cleaning duplikat ---
+    matching_submissions, n_appended = auto_append_register_to_login(matching_login, matching_register)
+    rows = extract_rows(matching_submissions, selected_tanggal)
     rows, n_removed = remove_duplicate_rows(rows)
-    if form_type == "Login" and n_appended:
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Dari Login", len(matching_submissions) - n_appended)
-        col2.metric("Auto-append dari Register", n_appended)
-        col3.metric("Duplikat Dihapus", n_removed)
-    else:
-        col1, col2 = st.columns(2)
-        col1.metric("Data Awal", len(matching_submissions))
-        col2.metric("Duplikat Dihapus", n_removed)
+
+    st.divider()
+    st.subheader("4️⃣ Pengecekan Data")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Dari Login", len(matching_login))
+    col2.metric("Auto-append dari Register", n_appended)
+    col3.metric("Duplikat Dihapus", n_removed)
     if not rows:
-        st.warning("⚠️ Tidak ada data tersisa setelah pembersihan.")
-    elif form_type == "Register":
-        # EDA sederhana (distribusi Jenis Kelamin) cuma relevan untuk
-        # Register — Login tidak punya field Jenis Kelamin.
-        render_simple_eda(rows)
+        st.warning("⚠️ Tidak ada peserta untuk kombinasi Tanggal + Judul ini.")
 
     st.divider()
 
@@ -484,9 +437,7 @@ def render_signature_app(ap_asset_map: dict) -> None:
             return
 
         with st.spinner("Membuat PDF (termasuk mengunduh gambar tanda tangan)..."):
-            pdf_bytes = build_attendance_pdf(
-                selected_judul_display, selected_tanggal, rows, ap_config["token"], form_config["pdf_columns"],
-            )
+            pdf_bytes = build_attendance_pdf(selected_judul_display, selected_tanggal, rows, ap_config["token"])
 
         st.success("✅ PDF berhasil dibuat.")
         st.download_button(
