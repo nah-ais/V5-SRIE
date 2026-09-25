@@ -1349,6 +1349,32 @@ def resolve_register_duplicate(
     if decision not in ("keep_a", "keep_b"):
         raise ValueError(f"Decision tidak dikenal: {decision}")
 
+    kept_id, dropped_id = (id_a, id_b) if decision == "keep_a" else (id_b, id_a)
+    kept_row_uid, dropped_row_uid = (row_uid_a, row_uid_b) if decision == "keep_a" else (row_uid_b, row_uid_a)
+    kept_custom_id = pair_row.get("custom_id_a") if decision == "keep_a" else pair_row.get("custom_id_b")
+    dropped_custom_id = pair_row.get("custom_id_b") if decision == "keep_a" else pair_row.get("custom_id_a")
+
+    # ---- STEP 0: "Sambungkan ulang" baris Login yang SUDAH TERLANJUR
+    # tercatat pakai identitas/ID milik duplikat yang akan DIHAPUS —
+    # supaya tidak ada sisa data "versi typo" yang nyangkut permanen di
+    # Login setelah duplikatnya dihapus dari Register (custom_id di kedua
+    # duplikat BISA BEDA kalau namanya cuma mirip/typo, bukan identik
+    # persis — canonicalize_custom_ids tidak menyatukan kasus ini karena
+    # dia exact-match, sedangkan pasangan ini ketemu lewat fuzzy match).
+    df_login = df_login.copy()
+    if (
+        kept_custom_id and dropped_custom_id and kept_custom_id != dropped_custom_id
+        and "custom_id" in df_login.columns
+    ):
+        mask_dropped_in_login = df_login["custom_id"].astype(str).str.strip() == str(dropped_custom_id).strip()
+        if mask_dropped_in_login.any():
+            df_login.loc[mask_dropped_in_login, "custom_id"] = kept_custom_id
+            # Sinkronkan juga "nama" ke versi yang di-KEEP (benar) — supaya
+            # tidak ada nama "versi typo" yang nyangkut di baris Login lama.
+            kept_nama = pair_row.get("nama_a") if decision == "keep_a" else pair_row.get("nama_b")
+            if kept_nama and "nama" in df_login.columns:
+                df_login.loc[mask_dropped_in_login, "nama"] = kept_nama
+
     # ---- STEP 1: Hapus salah satu duplikat di Register sesuai keputusan panitia ----
     if "_row_uid" in df_register.columns and row_uid_a is not None and row_uid_b is not None:
         drop_uid = row_uid_b if decision == "keep_a" else row_uid_a
@@ -1397,8 +1423,28 @@ def resolve_register_duplicate(
         return df_login, df_register_new, info
 
     # ---- STEP 4: Belum ada di Login -> append otomatis ----
-    append_key = latest_row_uid if "_row_uid" in df_register.columns and latest_row_uid is not None else latest_id
-    df_login_new = append_register_to_login(df_login, df_register, [append_key])
+    # PENTING: identitas (nama, custom_id, kelurahan, dst) yang di-append
+    # HARUS dari baris yang DIPERTAHANKAN (kept), BUKAN baris "acara
+    # terbaru" apa adanya — supaya tidak ada identitas "versi typo/salah"
+    # yang nyangkut permanen di Login setelah duplikatnya dihapus dari
+    # Register. Info KEGIATAN (judul+tanggal) tetap dari acara PALING BARU
+    # (bisa jadi berasal dari baris yang justru DIHAPUS, kalau submission
+    # itu yang lebih baru — makanya kita timpa field ini secara eksplisit).
+    if "_row_uid" in df_register.columns and kept_row_uid is not None:
+        kept_row_mask = df_register["_row_uid"] == kept_row_uid
+    else:
+        kept_row_mask = df_register["id_kobo"] == kept_id
+
+    if not kept_row_mask.any():
+        return df_login, df_register_new, "⚠️ Data identitas yang dipertahankan tidak ditemukan, tidak ada tindakan otomatis."
+
+    df_register_for_append = df_register.copy()
+    for col, value in (("judul_kegiatan", latest_row.get("judul_kegiatan")), ("tanggal_kegiatan", latest_row.get("tanggal_kegiatan"))):
+        if col in df_register_for_append.columns and value is not None:
+            df_register_for_append.loc[kept_row_mask, col] = value
+
+    append_key = kept_row_uid if "_row_uid" in df_register.columns and kept_row_uid is not None else kept_id
+    df_login_new = append_register_to_login(df_login, df_register_for_append, [append_key])
     info = (
         f"➕ Data untuk kegiatan **'{event_label}'** BELUM ada di Login — "
         "otomatis di-append ke dataset Login."
