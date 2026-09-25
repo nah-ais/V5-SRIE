@@ -105,7 +105,7 @@ def build_attendance(
     # --- Lookup profil (Usia/Jenis Kelamin) dari SELURUH Register AP ini
     # (bukan cuma yang di acara ini) — supaya peserta yang hadir lewat Login
     # tetap dapat Usia/Jenis Kelamin-nya dari Register manapun dia pernah isi. ---
-    profile_cols = [c for c in ["custom_id", "usia", "jenis_kelamin", "nama"] if c in df_register.columns]
+    profile_cols = [c for c in ["custom_id", "usia", "jenis_kelamin", "nama", "kategori_peserta"] if c in df_register.columns]
     profile_lookup = (
         df_register[profile_cols][_clean_str_col(df_register, "custom_id") != ""]
         .drop_duplicates(subset="custom_id", keep="first")
@@ -114,7 +114,7 @@ def build_attendance(
 
     def _enrich(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        for col in ["usia", "jenis_kelamin"]:
+        for col in ["usia", "jenis_kelamin", "kategori_peserta"]:
             if col in profile_lookup.columns:
                 df[col] = df["custom_id"].map(profile_lookup[col]).fillna(df.get(col, ""))
             elif col not in df.columns:
@@ -127,7 +127,7 @@ def build_attendance(
     login_dedup = _enrich(login_dedup)
     only_in_register = _enrich(only_in_register)
 
-    keep_cols = ["custom_id", "nama", "usia", "jenis_kelamin", "Sumber"]
+    keep_cols = ["custom_id", "nama", "usia", "jenis_kelamin", "kategori_peserta", "Sumber"]
     for df_ in (login_dedup, only_in_register):
         for col in keep_cols:
             if col not in df_.columns:
@@ -284,25 +284,41 @@ def render_attendance_dashboard(ap_asset_map: dict) -> None:
 
     st.divider()
     st.subheader("4️⃣ Filter (Opsional)")
-    col_f1, col_f2 = st.columns(2)
+    col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
         combined["usia_num"] = pd.to_numeric(combined["usia"], errors="coerce")
         has_age = combined["usia_num"].notna().any()
         if has_age:
             min_age, max_age = int(combined["usia_num"].min()), int(combined["usia_num"].max())
-            age_range = st.slider("Rentang Usia", min_age, max_age, (min_age, max_age), key="viz_age_filter")
+            if min_age == max_age:
+                st.caption(f"Semua peserta berusia {min_age} tahun (tidak ada rentang untuk difilter).")
+                age_range = (min_age, max_age)
+            else:
+                age_range = st.slider("Rentang Usia", min_age, max_age, (min_age, max_age), key="viz_age_filter")
         else:
             age_range = None
             st.caption("Tidak ada data usia untuk difilter.")
     with col_f2:
         gender_options = sorted({g for g in combined["jenis_kelamin"] if g})
         selected_genders = st.multiselect("Jenis Kelamin", gender_options, default=gender_options, key="viz_gender_filter")
+    with col_f3:
+        # Kategori Peserta (Peserta/Fasilitator/Pendamping/Staff WVI) di-traceback
+        # dari Register via custom_id (Login tidak punya field ini). Berbeda dari
+        # BTT, di sini SEKADAR FILTER pilihan panitia — bukan exclude otomatis.
+        kategori_options = sorted({k for k in combined["kategori_peserta"] if k})
+        if kategori_options:
+            selected_kategori = st.multiselect("Kategori Peserta", kategori_options, default=kategori_options, key="viz_kategori_filter")
+        else:
+            selected_kategori = None
+            st.caption("Field Kategori Peserta tidak ada di form ini.")
 
     filtered = combined.copy()
     if age_range:
         filtered = filtered[filtered["usia_num"].isna() | filtered["usia_num"].between(age_range[0], age_range[1])]
     if selected_genders:
         filtered = filtered[filtered["jenis_kelamin"].isin(selected_genders) | (filtered["jenis_kelamin"] == "")]
+    if selected_kategori:
+        filtered = filtered[filtered["kategori_peserta"].isin(selected_kategori) | (filtered["kategori_peserta"] == "")]
 
     st.divider()
     st.subheader("📊 Ringkasan Kehadiran")
