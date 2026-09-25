@@ -88,7 +88,7 @@ def init_session_state() -> None:
         config.SS_REVIEW_DECISIONS_LOGIN: {},
         config.SS_REVIEW_DECISIONS_REGISTER: {},
         config.SS_APPENDED_IDS: set(),
-        config.SS_AP_CONTEXT: "(Manual)",
+        config.SS_AP_CONTEXT: "",
         config.SS_EVENT_PROJECT_DATA: {},  # dict: (tanggal, judul) -> {"codes": [...], "metadata": {...}}
     }
     for key, value in defaults.items():
@@ -146,51 +146,30 @@ def _render_kobo_api_form(selected_ap: str) -> None:
     """
     Form untuk menarik data langsung dari KoboToolbox API.
 
-    Kalau AP yang dipilih sudah punya kredensial LENGKAP di secrets.toml
-    (token + Asset UID Login + Register), UI HANYA menampilkan 1 tombol
-    "Muat Data" — TIDAK ADA field token/UID yang ditampilkan sama sekali
+    Kredensial (token + Asset UID Login/Register) HANYA dari secrets.toml —
+    TIDAK ADA field token/UID yang ditampilkan/bisa diketik sama sekali
     (kredensial itu rahasia, tidak boleh kelihatan/ke-copy orang lain saat
-    layar dibagikan). Field manual HANYA muncul sebagai fallback kalau AP
-    "(Manual)" dipilih atau kredensial AP itu belum lengkap di secrets.toml.
+    layar dibagikan). UI cuma 1 tombol "Muat Data".
     """
-    if not config.AP_ASSET_MAP:
-        st.caption(
-            "ℹ️ Belum ada Area Program yang terdaftar di secrets.toml. "
-            "Tambahkan blok `[kobo.ap.NamaAP]` supaya muncul di dropdown ini, "
-            "atau isi kredensial secara manual di bawah."
-        )
-
-    ap_cfg = config.AP_ASSET_MAP.get(selected_ap, {}) if selected_ap != "(Manual)" else {}
+    ap_cfg = config.AP_ASSET_MAP.get(selected_ap, {})
     kredensial_lengkap = bool(ap_cfg.get("token") and ap_cfg.get("login") and ap_cfg.get("register"))
 
-    if kredensial_lengkap:
-        # --- Kredensial sudah lengkap dari secrets.toml -> SEMBUNYIKAN semua ---
-        api_token = ap_cfg["token"]
-        asset_login = ap_cfg["login"]
-        asset_register = ap_cfg["register"]
-        base_url = ap_cfg.get("base_url") or config.KOBO_ENDPOINT
-        submitted = st.button(
-            "📥 Muat Data dari KoboToolbox", type="primary", use_container_width=True, key=f"load_btn_{selected_ap}"
+    if not kredensial_lengkap:
+        st.error(
+            f"⚠️ Kredensial untuk '{selected_ap}' belum lengkap di secrets.toml "
+            "(butuh token, login_uid, DAN register_uid). Lengkapi dulu di secrets.toml, "
+            "lalu reboot aplikasi."
         )
-    else:
-        # --- Fallback: AP "(Manual)" atau kredensial belum lengkap di secrets ---
-        default_token = ap_cfg.get("token") or config.KOBO_TOKEN
-        default_login = ap_cfg.get("login") or config.FORM_UID_LOGIN
-        default_register = ap_cfg.get("register") or config.FORM_UID_REGISTRASI
-        default_base_url = ap_cfg.get("base_url") or config.KOBO_ENDPOINT
+        return
 
-        with st.form("load_kobo_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                api_token = st.text_input(
-                    "API Token", value=default_token, type="password", key=f"token_{selected_ap}"
-                )
-                base_url = st.text_input("Base URL", value=default_base_url)
-            with col2:
-                asset_login = st.text_input("Asset UID Login", value=default_login, key=f"uid_login_{selected_ap}")
-                asset_register = st.text_input("Asset UID Register", value=default_register, key=f"uid_register_{selected_ap}")
+    api_token = ap_cfg["token"]
+    asset_login = ap_cfg["login"]
+    asset_register = ap_cfg["register"]
+    base_url = ap_cfg.get("base_url") or config.KOBO_ENDPOINT
 
-            submitted = st.form_submit_button("📥 Muat Data dari KoboToolbox", use_container_width=True)
+    submitted = st.button(
+        "📥 Muat Data dari KoboToolbox", type="primary", use_container_width=True, key=f"load_btn_{selected_ap}"
+    )
 
     if not submitted:
         return
@@ -262,19 +241,27 @@ def render_load_step() -> None:
     # untuk kolom "AP" (dan turunannya: Province/District) di sheet BTT nanti,
     # BUKAN diambil dari field form Kobo mana pun. Tersimpan di session_state
     # supaya tetap "diingat" sepanjang sesi, dipakai lagi saat build BTT.
-    ap_options = ["(Manual)"] + list(config.AP_ASSET_MAP.keys())
+    #
+    # TIDAK ADA lagi opsi "(Manual)" — kredensial Kobo HANYA dari secrets.toml
+    # (tidak boleh ada field token/UID yang bisa diketik/kelihatan di layar).
+    ap_options = list(config.AP_ASSET_MAP.keys())
+    if not ap_options:
+        st.error(
+            "⚠️ Belum ada Area Program yang terdaftar di secrets.toml. "
+            "Tambahkan minimal 1 blok `[kobo.ap.NamaAP]` (dengan token, login_uid, "
+            "register_uid) sebelum bisa menarik data."
+        )
+        return
+
     default_ap_index = 0
-    current_ap = st.session_state.get(config.SS_AP_CONTEXT, "(Manual)")
+    current_ap = st.session_state.get(config.SS_AP_CONTEXT, "")
     if current_ap in ap_options:
         default_ap_index = ap_options.index(current_ap)
     selected_ap = st.selectbox(
         "Area Program",
         ap_options,
         index=default_ap_index,
-        help=(
-            "Menentukan Asset UID default (mode API) DAN kolom 'AP'/'Province'/'District' "
-            "di sheet BTT nanti — berlaku untuk mode API maupun Upload CSV."
-        ),
+        help="Menentukan kredensial Kobo (mode API) DAN kolom 'AP'/'Province'/'District' di sheet BTT nanti.",
     )
     st.session_state[config.SS_AP_CONTEXT] = selected_ap
 
@@ -861,7 +848,7 @@ def _build_btt_sheet(df_login: pd.DataFrame, df_register: pd.DataFrame) -> pd.Da
     df_base = add_participant_profile_columns(df_base, df_register)
 
     # "AP"/"Province"/"District" DARI DROPDOWN PANITIA (bukan field form Kobo).
-    ap_label = st.session_state.get(config.SS_AP_CONTEXT, "(Manual)")
+    ap_label = st.session_state.get(config.SS_AP_CONTEXT, "")
     df_base = add_location_context_columns(df_base, ap_label)
 
     event_data_map = st.session_state.get(config.SS_EVENT_PROJECT_DATA, {})
