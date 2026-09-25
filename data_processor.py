@@ -1036,6 +1036,62 @@ def _yes(value) -> bool:
     return str(value).strip().lower() in {"yes", "y", "true", "1"}
 
 
+# =========================================================
+# FILTER PESERTA — KHUSUS PEMBENTUKAN SHEET BTT
+# =========================================================
+# PENTING: filter ini SENGAJA cuma dipakai saat membangun sheet BTT akhir
+# (di _build_btt_sheet, app.py) — TIDAK dipakai saat cleaning/dedup Login
+# maupun Register. Login & Register tetap diproses APA ADANYA (semua
+# kategori: Peserta/Fasilitator/Pendamping/Staff WVI ikut dedup normal),
+# supaya duplikat di antara Fasilitator/Staff pun tetap tertangkap. Yang
+# dikecualikan cuma baris non-Peserta dari HASIL AKHIR BTT.
+#
+# Field 'Kategori_Peserta' HANYA ada di Register — Login tidak punya field
+# ini sama sekali (dikonfirmasi dari login_global_template.xlsx) — makanya
+# fungsi ini butuh df_register untuk "traceback" kategori tiap custom_id.
+#
+# Pencocokan pola (BUKAN exact-match) supaya tahan variasi nilai mentah
+# Kobo (mis. "fasilitator" ATAU "fasilitator__narasumber_pemberi_materi"
+# sama-sama tertangkap via prefix "fasilitator").
+NON_PARTICIPANT_PREFIXES = ["fasilitator", "pendamping", "staff_wvi", "staff wvi"]
+
+
+def _is_non_participant_category(value) -> bool:
+    text = str(value).strip().lower()
+    if not text:
+        return False  # kosong -> default aman, dianggap peserta
+    return any(text.startswith(p) for p in NON_PARTICIPANT_PREFIXES)
+
+
+def filter_btt_participants_only(df_login: pd.DataFrame, df_register: pd.DataFrame) -> pd.DataFrame:
+    """
+    Buang baris Login yang Kategori_Peserta-nya (di-traceback dari Register
+    via custom_id) BUKAN "peserta" — HANYA dipakai untuk pembentukan BTT.
+
+    Baris tanpa custom_id, custom_id yang tidak ketemu di Register, atau
+    kategori kosong/field tidak ada di form AP tersebut — TETAP DIPROSES
+    (default aman, tidak dibuang).
+    """
+    if "kategori_peserta" not in df_register.columns or "custom_id" not in df_register.columns:
+        return df_login
+    if "custom_id" not in df_login.columns:
+        return df_login
+
+    kategori_lookup = (
+        df_register[["custom_id", "kategori_peserta"]]
+        .assign(custom_id=lambda d: d["custom_id"].fillna("").astype(str).str.strip())
+        .query("custom_id != ''")
+        .drop_duplicates(subset="custom_id", keep="first")
+        .set_index("custom_id")["kategori_peserta"]
+    )
+
+    login_ids = df_login["custom_id"].fillna("").astype(str).str.strip()
+    kategori_per_row = login_ids.map(kategori_lookup)
+    is_non_participant = kategori_per_row.apply(_is_non_participant_category)
+
+    return df_login[~is_non_participant].reset_index(drop=True)
+
+
 def add_participant_profile_columns(df_login: pd.DataFrame, df_register: pd.DataFrame) -> pd.DataFrame:
     """Enrich BTT dari Register menggunakan ID, fallback Full Name."""
     df = df_login.copy()
