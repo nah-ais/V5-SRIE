@@ -53,6 +53,13 @@ LOGIN_KELURAHAN_CANDIDATES = ["Kelurahan", "kelurahan_pulldata_anak"]
 REGISTER_NAMA_CANDIDATES = ["nama_lengkap", "nama_lengkap_parent"]
 REGISTER_JENIS_KELAMIN_FIELD = "Jenis_Kelamin"
 REGISTER_NOMOR_TELEPON_FIELD = "Nomor_WA_HP"
+# Dipakai KHUSUS untuk auto-append Register->Login (ambil Usia/Kelurahan dari
+# Register untuk ditampilkan dengan "bentuk" kolom Login: Nama/Usia/Kelurahan).
+REGISTER_USIA_CANDIDATES = ["usia_final", "usia", "usia_manual"]
+REGISTER_KELURAHAN_CANDIDATES = ["Kelurahan_Final", "Kelurahan_001", "Kelurahan"]
+# custom_id — dicoba beberapa kandidat, "custom_id" top-level diprioritaskan
+# (konsisten dengan resolve_custom_id_column di data_processor.py).
+CUSTOM_ID_CANDIDATES = ["custom_id", "cek_ID", "group_dewasa/cek_ID"]
 
 FORM_CONFIGS = {
     "Login": {
@@ -144,21 +151,76 @@ def download_signature_bytes(submission: dict, api_token: str) -> bytes | None:
     return None
 
 
+def build_login_row_from_register(register_submission: dict, tanggal_kegiatan: str) -> dict:
+    """
+    Bentuk 1 baris "ala Login" (Nama/Usia/Kelurahan) dari submission RAW
+    Register — dipakai saat auto-append (orang yang Register tapi belum
+    Login untuk kegiatan ini). Usia diambil LANGSUNG dari field Register
+    (usia_final/usia/usia_manual) — BUKAN dihitung dari tanggal lahir,
+    karena kita tidak selalu punya tanggal lahir Login-nya.
+    """
+    return {
+        "nama": _get_first_nonempty(register_submission, REGISTER_NAMA_CANDIDATES),
+        "usia": _get_first_nonempty(register_submission, REGISTER_USIA_CANDIDATES),
+        "kelurahan": _get_first_nonempty(register_submission, REGISTER_KELURAHAN_CANDIDATES),
+        "submission": register_submission,
+    }
+
+
+def auto_append_register_to_login(
+    login_submissions: list[dict], register_submissions: list[dict],
+) -> tuple[list[dict], int]:
+    """
+    Auto-append Register->Login KHUSUS untuk fitur Sponsorship (mode Login):
+    orang yang sudah Register untuk kegiatan ini tapi custom_id-nya TIDAK
+    ketemu di Login manapun, ditambahkan sebagai baris tambahan (ala Login).
+
+    Pencocokan MURNI by custom_id (exact) — submission Login/Register tanpa
+    custom_id TIDAK ikut proses pencocokan ini (tetap dipertahankan apa
+    adanya di sisi Login, tapi tidak bisa dijadikan acuan "sudah ada").
+
+    Returns
+    -------
+    (submissions_gabungan, jumlah_yang_di_auto_append)
+    """
+    login_ids = {
+        _get_first_nonempty(s, CUSTOM_ID_CANDIDATES).strip()
+        for s in login_submissions
+        if _get_first_nonempty(s, CUSTOM_ID_CANDIDATES).strip()
+    }
+
+    appended = []
+    seen_register_ids = set()
+    for s in register_submissions:
+        rid = _get_first_nonempty(s, CUSTOM_ID_CANDIDATES).strip()
+        if not rid or rid in login_ids or rid in seen_register_ids:
+            continue
+        seen_register_ids.add(rid)
+        appended.append(s)
+
+    return login_submissions + appended, len(appended)
+
+
 def extract_rows(form_type: str, submissions: list[dict], tanggal_kegiatan: str) -> list[dict]:
     rows = []
     for s in submissions:
         if form_type == "Login":
-            nama = _get_first_nonempty(s, LOGIN_NAMA_CANDIDATES)
-            kelurahan = _get_first_nonempty(s, LOGIN_KELURAHAN_CANDIDATES)
-            # Usia LANGSUNG (usia_child, untuk peserta bukan dampingan WVI)
-            # diprioritaskan kalau ADA — kalau tidak, hitung dari tanggal
-            # lahir seperti biasa (dampingan WVI / jalur anak via IDN).
+            # Coba field Login dulu; kalau kosong, FALLBACK ke field Register
+            # (relevan untuk submission hasil auto-append di
+            # auto_append_register_to_login — submission itu ASLINYA dari
+            # Register, tidak punya field Login sama sekali).
+            nama = _get_first_nonempty(s, LOGIN_NAMA_CANDIDATES) or _get_first_nonempty(s, REGISTER_NAMA_CANDIDATES)
+            kelurahan = _get_first_nonempty(s, LOGIN_KELURAHAN_CANDIDATES) or _get_first_nonempty(s, REGISTER_KELURAHAN_CANDIDATES)
+
             usia_langsung = _get_first_nonempty(s, LOGIN_USIA_LANGSUNG_CANDIDATES)
             if usia_langsung:
                 usia = usia_langsung
             else:
                 tgl_lahir = _get_first_nonempty(s, LOGIN_TGL_LAHIR_CANDIDATES)
-                usia = calculate_age(tgl_lahir, tanggal_kegiatan)
+                usia = calculate_age(tgl_lahir, tanggal_kegiatan) if tgl_lahir else ""
+                if not usia:
+                    usia = _get_first_nonempty(s, REGISTER_USIA_CANDIDATES)
+
             rows.append({
                 "nama": nama,
                 "usia": usia,
@@ -337,7 +399,16 @@ def render_signature_app(ap_asset_map: dict) -> None:
                 submissions = fetch_submissions(asset_uid, ap_config["token"], base_url)
                 st.session_state[load_key] = submissions
                 st.session_state[loaded_ap_key] = selected_ap
-                st.success(f"✅ {len(submissions)} data {form_type} berhasil ditarik untuk {selected_ap}.")
+
+                # Khusus mode Login: TARIK JUGA Register (untuk auto-append
+                # Register->Login sebelum pengecekan duplikat, lihat di bawah).
+                if form_type == "Login" and ap_config.get("register"):
+                    register_submissions = fetch_submissions(ap_config["register"], ap_config["token"], base_url)
+                    st.session_state["sig_register_for_append"] = register_submissions
+                    st.session_state["sig_register_for_append_ap"] = selected_ap
+                    st.success(f"✅ {len(submissions)} data Login + {len(register_submissions)} data Register (untuk auto-append) berhasil ditarik.")
+                else:
+                    st.success(f"✅ {len(submissions)} data {form_type} berhasil ditarik untuk {selected_ap}.")
             except Exception as e:
                 st.error(f"❌ Gagal mengambil data: {e}")
 
@@ -372,6 +443,16 @@ def render_signature_app(ap_asset_map: dict) -> None:
     ]
     st.caption(f"📊 {len(matching_submissions)} data ditemukan untuk kegiatan ini.")
 
+    # --- Auto-append Register->Login (KHUSUS mode Login), SEBELUM dedup ---
+    n_appended = 0
+    if form_type == "Login" and st.session_state.get("sig_register_for_append_ap") == selected_ap:
+        register_pool = st.session_state.get("sig_register_for_append", [])
+        register_matching = [
+            s for s in register_pool
+            if _get_value(s, TANGGAL_KEGIATAN_FIELD) == selected_tanggal and _get_value(s, JUDUL_KEGIATAN_FIELD) == selected_judul_raw
+        ]
+        matching_submissions, n_appended = auto_append_register_to_login(matching_submissions, register_matching)
+
     rows = extract_rows(form_type, matching_submissions, selected_tanggal)
 
     # Cleaning duplikat OTOMATIS untuk KEDUA jenis form (Login maupun
@@ -379,9 +460,15 @@ def render_signature_app(ap_asset_map: dict) -> None:
     st.divider()
     st.subheader("5️⃣ Pengecekan Data")
     rows, n_removed = remove_duplicate_rows(rows)
-    col1, col2 = st.columns(2)
-    col1.metric("Data Awal", len(matching_submissions))
-    col2.metric("Duplikat Dihapus", n_removed)
+    if form_type == "Login" and n_appended:
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Dari Login", len(matching_submissions) - n_appended)
+        col2.metric("Auto-append dari Register", n_appended)
+        col3.metric("Duplikat Dihapus", n_removed)
+    else:
+        col1, col2 = st.columns(2)
+        col1.metric("Data Awal", len(matching_submissions))
+        col2.metric("Duplikat Dihapus", n_removed)
     if not rows:
         st.warning("⚠️ Tidak ada data tersisa setelah pembersihan.")
     elif form_type == "Register":
