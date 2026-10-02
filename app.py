@@ -730,17 +730,56 @@ def _render_event_project_section(df_login: pd.DataFrame) -> None:
     else:
         n_codes = int(selected_option)
 
+    # --- Dropdown Activity Code (dari referensi Logframe), + opsi ketik manual ---
+    logframe_lookup_for_dropdown = config.load_activity_code_logframe()
+    MANUAL_OPTION = "✏️ Lainnya (ketik manual)"
+
+    def _dropdown_label(code: str) -> str:
+        meta = logframe_lookup_for_dropdown.get(code, {})
+        sector = meta.get("Sector", "")
+        activity = meta.get("Activity", "")
+        extra = " — ".join(x for x in [sector, activity] if x)
+        return f"{code} ({extra})" if extra else code
+
+    code_options = sorted(logframe_lookup_for_dropdown.keys())
+    label_to_code = {_dropdown_label(c): c for c in code_options}
+    label_to_code[MANUAL_OPTION] = MANUAL_OPTION
+
     new_codes = []
     code_cols = st.columns(3)
     for i in range(n_codes):
         default_val = existing_codes[i] if i < len(existing_codes) else ""
         with code_cols[i % 3]:
-            val = st.text_input(
-                f"Activity Code #{i + 1}",
-                value=default_val,
-                key=f"activity_code_input_{selected_tanggal}_{selected_judul}_{i}",
-                help="Format wajib: xxx.xx.xx (contoh: 001.02.03)",
-            )
+            if code_options:
+                # Default dropdown: kalau nilai tersimpan ADA di referensi,
+                # pilih itu; kalau tidak (termasuk kosong/kode lama belum
+                # terdaftar), default ke opsi "ketik manual".
+                default_label = _dropdown_label(default_val) if default_val in logframe_lookup_for_dropdown else MANUAL_OPTION
+                options_list = [MANUAL_OPTION] + [_dropdown_label(c) for c in code_options]
+                selected_label = st.selectbox(
+                    f"Activity Code #{i + 1}",
+                    options_list,
+                    index=options_list.index(default_label) if default_label in options_list else 0,
+                    key=f"activity_code_select_{selected_tanggal}_{selected_judul}_{i}",
+                )
+                if selected_label == MANUAL_OPTION:
+                    val = st.text_input(
+                        f"Ketik Activity Code #{i + 1} manual",
+                        value=default_val if default_val not in logframe_lookup_for_dropdown else "",
+                        key=f"activity_code_manual_{selected_tanggal}_{selected_judul}_{i}",
+                        help="Format wajib: xxx.xx.xx (contoh: 001.02.03) — kode ini belum ada di referensi Logframe.",
+                    )
+                else:
+                    val = label_to_code[selected_label]
+                    st.caption(f"Kode: `{val}`")
+            else:
+                # Belum ada referensi CSV sama sekali -> tetap text_input biasa seperti sebelumnya.
+                val = st.text_input(
+                    f"Activity Code #{i + 1}",
+                    value=default_val,
+                    key=f"activity_code_input_{selected_tanggal}_{selected_judul}_{i}",
+                    help="Format wajib: xxx.xx.xx (contoh: 001.02.03)",
+                )
         new_codes.append(val.strip())
 
     invalid_codes = [c for c in new_codes if c and not re.match(ACTIVITY_CODE_PATTERN, c)]
@@ -754,8 +793,7 @@ def _render_event_project_section(df_login: pd.DataFrame) -> None:
     # berdasarkan Activity Code #1 — SEMENTARA cuma kode pertama yang dipakai
     # untuk lookup (lihat catatan di config.py soal >1 Activity Code per acara).
     first_code = new_codes[0] if new_codes else ""
-    logframe_lookup = config.load_activity_code_logframe()
-    logframe_match = logframe_lookup.get(first_code)
+    logframe_match = logframe_lookup_for_dropdown.get(first_code)
 
     if logframe_match:
         st.caption(f"✅ Logframe otomatis terisi dari referensi Activity Code **{first_code}** — tetap bisa diedit kalau perlu.")
