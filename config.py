@@ -274,7 +274,15 @@ PROJECT_METADATA_FIELDS = [
 #
 # File CSV ini TIDAK WAJIB ada — kalau belum di-upload ke repo, fungsi ini
 # mengembalikan dict kosong (aman, auto-fill cuma tidak aktif, tidak error).
-ACTIVITY_CODE_LOGFRAME_PATH = os.path.join("master_data", "activity_code_logframe.csv")
+# PENTING: dihitung relatif terhadap LOKASI FILE config.py ini sendiri
+# (pakai __file__), BUKAN relatif terhadap current working directory saat
+# Streamlit dijalankan. Kalau pakai path relatif biasa (mis. cuma
+# "master_data/..."), lokasi file bisa salah tergantung dari folder mana
+# proses Streamlit di-start (beda platform/hosting bisa beda working
+# directory) — ini penyebab paling umum CSV "tidak kebaca" padahal filenya
+# sudah ada di repo.
+_CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+ACTIVITY_CODE_LOGFRAME_PATH = os.path.join(_CONFIG_DIR, "master_data", "activity_code_logframe.csv")
 
 # Mapping nama kolom CSV (snake_case) -> nama field PROJECT_METADATA_FIELDS
 # (Title Case, dipakai sebagai key dict metadata di session_state).
