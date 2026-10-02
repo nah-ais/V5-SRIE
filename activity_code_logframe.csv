@@ -1,0 +1,11 @@
+activity_code,implementor,sector,cpm,project,project_category,activity,activity_detail
+001.01.01,WVI,Kesehatan,CPM-HEALTH-01,Program Gizi Anak,Sponsorship,Posyandu Balita,Pemeriksaan tumbuh kembang & pemberian makanan tambahan
+001.01.02,WVI,Kesehatan,CPM-HEALTH-01,Program Gizi Anak,Sponsorship,Penyuluhan Gizi Ibu Hamil,Edukasi gizi seimbang untuk ibu hamil & menyusui
+002.01.01,WVI,Pendidikan,CPM-EDU-01,Program Pendidikan Anak Usia Dini,Sponsorship,Kelas Parenting,Pelatihan pola asuh untuk orang tua
+002.01.02,WVI,Pendidikan,CPM-EDU-01,Program Pendidikan Anak Usia Dini,Sponsorship,Pendampingan Belajar Anak,Bimbingan belajar tambahan di luar sekolah
+003.01.01,WVI,Perlindungan Anak,CPM-CP-01,Program Perlindungan Anak Komunitas,IPF,Sosialisasi Hak Anak,Edukasi hak anak & pencegahan kekerasan ke komunitas
+003.01.02,WVI,Perlindungan Anak,CPM-CP-01,Program Perlindungan Anak Komunitas,IPF,Pelatihan Kader Perlindungan Anak,Peningkatan kapasitas kader dalam deteksi dini kasus anak
+004.01.01,WVI,WASH,CPM-WASH-01,Program Air Bersih & Sanitasi,IPF,Penyediaan Air Bersih,Pembangunan/perbaikan akses air bersih komunitas
+004.01.02,WVI,WASH,CPM-WASH-01,Program Air Bersih & Sanitasi,IPF,Penyuluhan PHBS,Edukasi Perilaku Hidup Bersih & Sehat
+005.01.01,WVI,Livelihood,CPM-LIVE-01,Program Pemberdayaan Ekonomi Keluarga,Non-Sponsorship,Pelatihan Keterampilan Usaha,Pelatihan kewirausahaan untuk kepala keluarga
+006.01.01,WVI,Perayaan & Penutupan,CPM-EVT-01,Event Area Program,Sponsorship,Perayaan Anak,Kegiatan perayaan/penutupan tahunan Area Program
