@@ -780,6 +780,11 @@ def _render_event_project_section(df_login: pd.DataFrame) -> None:
                     key=f"activity_code_input_{selected_tanggal}_{selected_judul}_{i}",
                     help="Format wajib: xxx.xx.xx (contoh: 001.02.03)",
                 )
+                if i == 0:
+                    st.caption(
+                        f"ℹ️ Referensi Logframe belum terbaca dari: `{config.ACTIVITY_CODE_LOGFRAME_PATH}`. "
+                        "Pastikan file `master_data/activity_code_logframe.csv` ada di repo GitHub Anda."
+                    )
         new_codes.append(val.strip())
 
     invalid_codes = [c for c in new_codes if c and not re.match(ACTIVITY_CODE_PATTERN, c)]
