@@ -749,14 +749,34 @@ def _render_event_project_section(df_login: pd.DataFrame) -> None:
 
     # --- 4) Info Project untuk acara ini ---
     st.markdown("**4️⃣ Info Project untuk acara ini**")
+
+    # Auto-fill dari referensi Logframe (master_data/activity_code_logframe.csv)
+    # berdasarkan Activity Code #1 — SEMENTARA cuma kode pertama yang dipakai
+    # untuk lookup (lihat catatan di config.py soal >1 Activity Code per acara).
+    first_code = new_codes[0] if new_codes else ""
+    logframe_lookup = config.load_activity_code_logframe()
+    logframe_match = logframe_lookup.get(first_code)
+
+    if logframe_match:
+        st.caption(f"✅ Logframe otomatis terisi dari referensi Activity Code **{first_code}** — tetap bisa diedit kalau perlu.")
+    elif first_code:
+        st.caption(f"ℹ️ Activity Code **{first_code}** tidak ada di referensi Logframe — isi Info Project manual seperti biasa.")
+
     new_metadata = {}
     meta_cols = st.columns(2)
     for i, field in enumerate(config.PROJECT_METADATA_FIELDS):
+        # Prioritas nilai default: (1) yang sudah tersimpan sebelumnya untuk
+        # acara ini, (2) kalau belum ada sama sekali, pakai hasil auto-fill
+        # dari referensi Logframe.
+        default_val = existing_metadata.get(field) or (logframe_match.get(field, "") if logframe_match else "")
         with meta_cols[i % 2]:
             new_metadata[field] = st.text_input(
                 field,
-                value=existing_metadata.get(field, ""),
-                key=f"event_meta_{selected_tanggal}_{selected_judul}_{field}",
+                value=default_val,
+                # "first_code" SENGAJA ikut jadi bagian key — supaya widget
+                # "reset" ke nilai auto-fill yang benar begitu panitia ganti
+                # Activity Code #1 (bukan nyangkut ke nilai widget lama).
+                key=f"event_meta_{selected_tanggal}_{selected_judul}_{first_code}_{field}",
             )
 
     if st.button("💾 Simpan untuk Acara Ini", type="primary"):
