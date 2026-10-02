@@ -8,6 +8,9 @@ Memusatkan konfigurasi di sini memudahkan maintenance jika suatu saat
 struktur form Kobo berubah (tambah field, ganti nama field, dsb).
 """
 
+import csv
+import os
+
 # =========================================================
 # 1. MAPPING KOLOM KOBOTOOLBOX -> NAMA KOLOM INTERNAL
 # =========================================================
@@ -259,6 +262,59 @@ PROJECT_METADATA_FIELDS = [
     "Activity",
     "Activity Detail",
 ]
+
+# =========================================================
+# REFERENSI LOGFRAME PER ACTIVITY CODE (master_data/activity_code_logframe.csv)
+# =========================================================
+# SEMENTARA: referensi 1 Activity Code -> 1 set Logframe (Implementor/Sector/
+# CPM/dst). Dipakai untuk AUTO-FILL Info Project saat panitia input Activity
+# Code #1 di step Finalisasi — TIDAK MENGUBAH kemampuan input >1 Activity
+# Code per acara (itu dibiarkan apa adanya dulu, cuma kode pertama yang
+# dipakai untuk lookup auto-fill).
+#
+# File CSV ini TIDAK WAJIB ada — kalau belum di-upload ke repo, fungsi ini
+# mengembalikan dict kosong (aman, auto-fill cuma tidak aktif, tidak error).
+ACTIVITY_CODE_LOGFRAME_PATH = os.path.join("master_data", "activity_code_logframe.csv")
+
+# Mapping nama kolom CSV (snake_case) -> nama field PROJECT_METADATA_FIELDS
+# (Title Case, dipakai sebagai key dict metadata di session_state).
+_LOGFRAME_CSV_COLUMN_MAP = {
+    "implementor": "Implementor",
+    "sector": "Sector",
+    "cpm": "CPM",
+    "project": "Project",
+    "project_category": "Project Category",
+    "activity": "Activity",
+    "activity_detail": "Activity Detail",
+}
+
+
+def load_activity_code_logframe() -> dict:
+    """
+    Baca master_data/activity_code_logframe.csv -> dict:
+        {activity_code: {"Implementor": ..., "Sector": ..., ...}}
+
+    Aman dipanggil kapan pun — kalau file belum ada/rusak, kembalikan dict
+    kosong (TIDAK error), supaya sistem tetap jalan normal walau file ini
+    belum di-upload ke repo.
+    """
+    if not os.path.exists(ACTIVITY_CODE_LOGFRAME_PATH):
+        return {}
+    try:
+        result = {}
+        with open(ACTIVITY_CODE_LOGFRAME_PATH, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                code = (row.get("activity_code") or "").strip()
+                if not code:
+                    continue
+                result[code] = {
+                    target_field: (row.get(csv_col) or "").strip()
+                    for csv_col, target_field in _LOGFRAME_CSV_COLUMN_MAP.items()
+                }
+        return result
+    except Exception:
+        return {}
 # NOTE: "Activity Code" dan SELURUH field metadata di atas SEKARANG DI-ASSIGN
 # PER ACARA (kombinasi Tanggal + Judul Kegiatan), BUKAN satu set global untuk
 # semua data — supaya panitia TIDAK copy-paste 1 info project ke semua
